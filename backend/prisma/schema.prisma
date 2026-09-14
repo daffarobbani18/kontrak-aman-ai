@@ -1,0 +1,446 @@
+// =============================================================================
+// KontrakAman AI — Prisma Schema (v2)
+// Convention: field names = snake_case (sesuai kode backend)
+//             DB tables/columns = snake_case via @@map/@map
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum UserRole {
+  USER
+  ADMIN
+
+  @@map("user_role")
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  BUSINESS
+
+  @@map("subscription_tier")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PAST_DUE
+
+  @@map("subscription_status")
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+
+  @@map("billing_cycle")
+}
+
+enum ProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+
+  @@map("processing_status")
+}
+
+enum OAuthProvider {
+  GOOGLE
+
+  @@map("oauth_provider")
+}
+
+enum EmailTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+
+  @@map("email_token_type")
+}
+
+enum QuotaType {
+  AUDIT
+  NEGOTIATION
+
+  @@map("quota_type")
+}
+
+// =============================================================================
+// MODEL: Plan
+// =============================================================================
+
+model Plan {
+  id                String           @id @default(cuid())
+  name              String
+  description       String?
+  tier              SubscriptionTier
+  price             Int
+  currency          String           @default("IDR")
+  billing_cycle     BillingCycle
+  audit_limit       Int              @default(5)
+  negotiation_limit Int              @default(3)
+  features          Json             @default("[]")
+  is_active         Boolean          @default(true)
+  mayar_product_id  String?
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+
+  subscriptions Subscription[]
+  transactions  Transaction[]
+
+  @@map("plans")
+}
+
+// =============================================================================
+// MODEL: User
+// =============================================================================
+
+model User {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  password_hash         String?
+  name                  String
+  avatar_url            String?
+  email_verified        Boolean   @default(false)
+  role                  UserRole  @default(USER)
+  profesi               String?
+  consent_privacy_at    DateTime?
+  notif_email_audit     Boolean   @default(true)
+  notif_email_pengingat Boolean   @default(true)
+  is_suspended          Boolean   @default(false)
+  suspended_at          DateTime?
+  deleted_at            DateTime?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+
+  oauth_accounts  OAuthAccount[]
+  refresh_tokens  RefreshToken[]
+  email_tokens    EmailToken[]
+  contracts       ContractDocument[]
+  audits          Audit[]
+  negotiations    Negotiation[]
+  subscriptions   Subscription[]
+  transactions    Transaction[]
+  quota_overrides QuotaOverride[]
+  usage_counters  UsageCounter[]
+  audit_logs      AuditLog[]
+
+  @@map("users")
+}
+
+// =============================================================================
+// MODEL: OAuthAccount
+// =============================================================================
+
+model OAuthAccount {
+  id                  String        @id @default(cuid())
+  user_id             String
+  provider            OAuthProvider
+  provider_account_id String
+  created_at          DateTime      @default(now())
+  updated_at          DateTime      @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([provider, provider_account_id])
+  @@map("oauth_accounts")
+}
+
+// =============================================================================
+// MODEL: RefreshToken
+// =============================================================================
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  user_id    String
+  token_hash String    @unique
+  expires_at DateTime
+  revoked_at DateTime?
+  created_at DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+
+// =============================================================================
+// MODEL: EmailToken
+// =============================================================================
+
+model EmailToken {
+  id         String         @id @default(cuid())
+  user_id    String
+  token_hash String         @unique
+  type       EmailTokenType
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime       @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("email_tokens")
+}
+
+// =============================================================================
+// MODEL: ContractDocument
+// =============================================================================
+
+model ContractDocument {
+  id                   String    @id @default(cuid())
+  user_id              String
+  file_name            String
+  file_key             String    @unique
+  file_url             String
+  file_size            Int
+  mime_type            String
+  status               String    @default("UPLOADED")
+  parent_document_id   String?   // F-DOC-05: tautan ke dokumen induk jika ini adalah revisi
+  scheduled_purge_at   DateTime?
+  purge_notif_sent_at  DateTime?
+  deleted_at           DateTime?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  user            User               @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  parent_document ContractDocument?  @relation("RevisiDokumen", fields: [parent_document_id], references: [id])
+  revisi          ContractDocument[] @relation("RevisiDokumen")
+  audits          Audit[]
+
+  @@index([user_id])
+  @@map("contract_documents")
+}
+
+// =============================================================================
+// MODEL: Audit
+// =============================================================================
+
+model Audit {
+  id                String    @id @default(cuid())
+  user_id           String
+  document_id       String
+  status            String    @default("PENDING")
+  risk_score        Int?
+  overall_risk_level String?   @db.VarChar(10)
+  summary           String?   @db.Text
+  result_json       Json?
+  error_message       String?   @db.Text
+  followed_up_at      DateTime? // F-NOTIF-02: ditandai selesai ditindaklanjuti oleh pengguna
+  completed_at        DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  user         User             @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  document     ContractDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  clauses      Clause[]
+  negotiations Negotiation[]
+
+  @@index([user_id])
+  @@index([status])
+  @@map("audits")
+}
+
+// =============================================================================
+// MODEL: Clause
+// =============================================================================
+
+model Clause {
+  id             String   @id @default(cuid())
+  audit_id       String
+  title          String
+  content        String   @db.Text
+  risk_level     String
+  explanation    String   @db.Text
+  recommendation String?  @db.Text
+  created_at     DateTime @default(now())
+
+  audit Audit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+
+  @@index([audit_id])
+  @@map("clauses")
+}
+
+// =============================================================================
+// MODEL: Negotiation
+// =============================================================================
+
+model Negotiation {
+  id             String    @id @default(cuid())
+  user_id        String
+  audit_id       String
+  status         String    @default("PENDING")
+  summary        String?   @db.Text
+  draft_document String?   @db.Text
+  edited_draft   String?   @db.Text
+  is_edited      Boolean   @default(false)
+  change_points  Json?
+  error_message  String?   @db.Text
+  completed_at   DateTime?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  audit Audit @relation(fields: [audit_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([status])
+  @@map("negotiations")
+}
+
+// =============================================================================
+// MODEL: Subscription
+// =============================================================================
+
+model Subscription {
+  id                    String             @id @default(cuid())
+  user_id               String
+  plan_id               String
+  status                SubscriptionStatus @default(ACTIVE)
+  current_period_start  DateTime
+  current_period_end    DateTime
+  cancelled_at          DateTime?
+  mayar_subscription_id String?            @unique
+  created_at            DateTime           @default(now())
+  updated_at            DateTime           @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  plan Plan @relation(fields: [plan_id], references: [id])
+
+  @@index([user_id])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+// =============================================================================
+// MODEL: Transaction
+// =============================================================================
+
+model Transaction {
+  id                     String    @id @default(cuid())
+  user_id                String
+  plan_id                String?
+  amount                 Int
+  currency               String    @default("IDR")
+  status                 String    @default("PENDING")
+  external_id            String?   @unique
+  gateway_transaction_id String?
+  payment_url            String?   @db.Text
+  mayar_payment_link_id  String?
+  paid_at                DateTime?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+
+  user User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  plan Plan? @relation(fields: [plan_id], references: [id])
+
+  @@index([user_id])
+  @@map("transactions")
+}
+
+// =============================================================================
+// MODEL: UsageCounter
+// =============================================================================
+
+model UsageCounter {
+  id                String   @id @default(cuid())
+  user_id           String
+  month             Int
+  year              Int
+  audit_count       Int      @default(0)
+  negotiation_count Int      @default(0)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, month, year], name: "user_id_month_year")
+  @@index([user_id])
+  @@map("usage_counters")
+}
+
+// =============================================================================
+// MODEL: QuotaOverride
+// =============================================================================
+
+model QuotaOverride {
+  id          String    @id @default(cuid())
+  user_id     String
+  quota_type  QuotaType
+  limit_value Int
+  expires_at  DateTime?
+  created_at  DateTime  @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, quota_type], name: "user_id_quota_type")
+  @@index([user_id])
+  @@map("quota_overrides")
+}
+
+// =============================================================================
+// MODEL: WebhookEvent
+// =============================================================================
+
+model WebhookEvent {
+  id              String    @id @default(cuid())
+  event_type      String
+  payload         Json
+  idempotency_key String    @unique
+  processed       Boolean   @default(false)
+  processed_at    DateTime?
+  error_message   String?   @db.Text
+  created_at      DateTime  @default(now())
+
+  @@index([event_type])
+  @@map("webhook_events")
+}
+
+// =============================================================================
+// MODEL: SystemConfig
+// =============================================================================
+
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String   @db.Text
+  description String?  @db.Text
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+// =============================================================================
+// MODEL: AuditLog
+// =============================================================================
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  user_id    String?
+  action     String
+  entity     String
+  entity_id  String?
+  old_data   Json?
+  new_data   Json?
+  ip_address String?
+  user_agent String?
+  created_at DateTime  @default(now())
+
+  user User? @relation(fields: [user_id], references: [id])
+
+  @@index([user_id])
+  @@index([action])
+  @@map("audit_logs")
+}
