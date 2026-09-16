@@ -25,6 +25,33 @@ const DURASI_RESET_TOKEN_JAM = 1;
 export interface HasilToken {
   accessToken: string;
   refreshToken: string;
+  kedaluwarsaDalam: number;
+}
+
+/** Data pengguna yang dikirim di respons masuk — selaras docs/api.md 4.3 */
+export interface DataPenggunaToken {
+  id: string;
+  nama_lengkap: string;
+  email: string;
+  tier: 'gratis' | 'pro' | 'bisnis';
+  avatar_url: string | null;
+}
+
+/** Respons masuk — selaras docs/api.md Bagian 4.3 (snake_case) */
+export interface ResponsMasuk {
+  access_token: string;
+  refresh_token: string;
+  tipe_token: 'Bearer';
+  kedaluwarsa_dalam: number;
+  pengguna: DataPenggunaToken;
+}
+
+/** Respons perbarui token — selaras docs/api.md Bagian 4.6 */
+export interface ResponsPembaruanToken {
+  access_token: string;
+  refresh_token: string;
+  tipe_token: 'Bearer';
+  kedaluwarsa_dalam: number;
 }
 
 export interface HasilDaftar {
@@ -88,7 +115,7 @@ export class AuthService {
     });
 
     // Kirim email verifikasi
-    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3001');
+    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3000');
     const tautanVerifikasi = `${frontendUrl}/verifikasi-email?token=${tokenVerifikasi}`;
     await this.email.kirim({
       ke: pengguna.email,
@@ -141,8 +168,8 @@ export class AuthService {
     ]);
   }
 
-  // ── Masuk (login) ────────────────────────────────────────────────────────────
-  async masuk(dto: DtoMasuk): Promise<HasilToken> {
+  // ── Masuk (login) ────────────────────────────────────────────────────────
+  async masuk(dto: DtoMasuk): Promise<ResponsMasuk> {
     const pengguna = await this.prisma.user.findUnique({
       where: { email: dto.email },
       select: {
@@ -191,7 +218,15 @@ export class AuthService {
       console.warn(`Gagal catat audit log login: ${String(err)}`),
     );
 
-    return token;
+    // Bentuk respons sesuai kontrak docs/api.md — snake_case + data pengguna
+    const dataPengguna = await this.ambilDataPengguna(pengguna.id);
+    return {
+      access_token: token.accessToken,
+      refresh_token: token.refreshToken,
+      tipe_token: 'Bearer',
+      kedaluwarsa_dalam: token.kedaluwarsaDalam,
+      pengguna: dataPengguna,
+    };
   }
 
   // ── Login via Google ─────────────────────────────────────────────────────────
@@ -245,8 +280,8 @@ export class AuthService {
     return this.buatToken(pengguna.id, pengguna.email, pengguna.role);
   }
 
-  // ── Refresh token ────────────────────────────────────────────────────────────
-  async refreshToken(rawToken: string): Promise<HasilToken> {
+  // ── Refresh token ────────────────────────────────────────────────────────
+  async refreshToken(rawToken: string): Promise<ResponsPembaruanToken> {
     const hashToken = crypto
       .createHash('sha256')
       .update(rawToken)
@@ -275,11 +310,18 @@ export class AuthService {
       data: { revoked_at: new Date() },
     });
 
-    return this.buatToken(
+    const token = await this.buatToken(
       tokenRecord.user.id,
       tokenRecord.user.email,
       tokenRecord.user.role,
     );
+
+    return {
+      access_token: token.accessToken,
+      refresh_token: token.refreshToken,
+      tipe_token: 'Bearer',
+      kedaluwarsa_dalam: token.kedaluwarsaDalam,
+    };
   }
 
   // ── Keluar ───────────────────────────────────────────────────────────────────
@@ -318,7 +360,7 @@ export class AuthService {
       },
     });
 
-    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3001');
+    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3000');
     const tautanReset = `${frontendUrl}/reset-kata-sandi?token=${tokenReset}`;
     await this.email.kirim({
       ke: email,
@@ -408,7 +450,7 @@ export class AuthService {
       },
     });
 
-    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3001');
+    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3000');
     const tautanVerifikasi = `${frontendUrl}/verifikasi-email?token=${tokenVerifikasi}`;
     await this.email.kirim({
       ke: email,
@@ -464,6 +506,58 @@ export class AuthService {
       },
     });
 
-    return { accessToken, refreshToken: rawRefreshToken };
+    return {
+      accessToken,
+      refreshToken: rawRefreshToken,
+      kedaluwarsaDalam: this.durasiAksesKeDetik(),
+    };
+  }
+
+  /**
+   * Ambil data pengguna untuk respons masuk — tier diambil dari langganan aktif,
+   * fallback 'gratis' jika tidak ada langganan aktif.
+   */
+  private async ambilDataPengguna(userId: string): Promise<DataPenggunaToken> {
+    const pengguna = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        avatar_url: true,
+        subscriptions: {
+          where: { status: 'ACTIVE' },
+          select: { plan: { select: { tier: true } } },
+          take: 1,
+          orderBy: { current_period_end: 'desc' },
+        },
+      },
+    });
+
+    if (!pengguna) {
+      throw new UnauthorizedException('Pengguna tidak ditemukan');
+    }
+
+    const tierLangganan = pengguna.subscriptions[0]?.plan.tier;
+    const tier: DataPenggunaToken['tier'] =
+      tierLangganan === 'PRO' ? 'pro' : tierLangganan === 'BUSINESS' ? 'bisnis' : 'gratis';
+
+    return {
+      id: pengguna.id,
+      nama_lengkap: pengguna.name,
+      email: pengguna.email,
+      tier,
+      avatar_url: pengguna.avatar_url,
+    };
+  }
+
+  /** Ubah JWT_ACCESS_EXPIRES_IN (mis. '15m') jadi jumlah detik */
+  private durasiAksesKeDetik(): number {
+    const nilai = this.cfg.get<string>('JWT_ACCESS_EXPIRES_IN', '15m');
+    const cocok = /^(\d+)([smhd])$/.exec(nilai);
+    if (!cocok) return 900; // default 15 menit
+
+    const pengali: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+    return Number(cocok[1]) * pengali[cocok[2]];
   }
 }

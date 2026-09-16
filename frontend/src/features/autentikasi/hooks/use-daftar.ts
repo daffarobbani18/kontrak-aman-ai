@@ -5,10 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { skemaDaftar, type TipeDaftar } from "@/features/autentikasi/types";
 import { daftar } from "@/features/autentikasi/services/autentikasi.service";
-import { mockDaftar } from "@/lib/mock-auth";
 import { KesalahanAPI, KODE_ERROR } from "@/lib/api-client";
-
-const PAKAI_MOCK = process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
 // ============================================================
 // Hook useDaftar
@@ -42,14 +39,12 @@ export function useDaftar() {
     try {
       // Field setuju_kebijakan_privasi tidak dikirim ke API
       // karena hanya divalidasi di frontend (F-PRIV-01)
-      PAKAI_MOCK
-        ? await mockDaftar(data.nama_lengkap, data.email)
-        : await daftar({
-            nama_lengkap: data.nama_lengkap,
-            email: data.email,
-            kata_sandi: data.kata_sandi,
-            konfirmasi_kata_sandi: data.konfirmasi_kata_sandi,
-          });
+      await daftar({
+        nama_lengkap: data.nama_lengkap,
+        email: data.email,
+        kata_sandi: data.kata_sandi,
+        konfirmasi_kata_sandi: data.konfirmasi_kata_sandi,
+      });
 
       // Simpan email untuk ditampilkan di halaman konfirmasi
       setEmailTerdaftar(data.email);

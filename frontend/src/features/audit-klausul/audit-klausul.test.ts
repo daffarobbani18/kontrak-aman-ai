@@ -1,105 +1,109 @@
 // ============================================================
 // Test audit klausul — KontrakAman AI
-// Cakupan: tipe validasi, service mock, state machine hook
-// Sesuai AGENTS.md Bagian 6: 70% untuk hooks/services/utils
+// Cakupan: service via mock apiClient (api.md 7.2, 6.3),
+//          validasi kontrak tipe TypeScript
 // ============================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ambilHasilAudit } from "./services/audit-klausul.service";
+import { ambilDetailDokumen } from "./services/dokumen-pratinjau.service";
 import type {
   HasilAuditSelesai,
   HasilAuditMemproses,
   DataKlausul,
   StatistikAudit,
+  DetailDokumenKontrak,
 } from "./types";
+import { apiClient } from "@/lib/api-client";
+
+// Mock apiClient di boundary — service tidak melakukan fetch sungguhan
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  apiClient: (await import("@/test/api-client-mock")).buatApiClientMock(),
+}));
+
+const mGet = vi.mocked(apiClient.get);
 
 // ============================================================
-// Setup mock environment (mode mock aktif)
+// GET /audit/:id — ambilHasilAudit (api.md 7.2)
 // ============================================================
-vi.stubEnv("NEXT_PUBLIC_MOCK_AUTH", "true");
-
-describe("audit-klausul service (mode mock)", () => {
+describe("ambilHasilAudit", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    mGet.mockReset();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+  it("memanggil GET /audit/:id dengan auth", async () => {
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: {
+        id: "aud_001",
+        dokumen_kontrak_id: "dok_001",
+        status: "memproses",
+        progres_persen: 45,
+      },
+    });
+
+    await ambilHasilAudit("aud_001");
+
+    expect(mGet).toHaveBeenCalledWith("/audit/aud_001", true);
   });
 
-  // ----------------------------------------------------------
-  // Panggilan pertama: harus memproses (progres 0)
-  // ----------------------------------------------------------
-  it("panggilan pertama mengembalikan status memproses dengan progres 0", async () => {
-    const auditId = `aud_test_${Date.now()}`;
-    const promise = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await promise;
+  it("mengembalikan status memproses dengan progres dari API", async () => {
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: {
+        id: "aud_001",
+        dokumen_kontrak_id: "dok_001",
+        status: "memproses",
+        progres_persen: 55,
+      } satisfies HasilAuditMemproses,
+    });
+
+    const hasil = await ambilHasilAudit("aud_001");
 
     expect(hasil.status).toBe("memproses");
-    expect(hasil.id).toBe(auditId);
-    if (hasil.status === "memproses") {
-      expect(hasil.progres_persen).toBe(0);
-    }
-  });
-
-  // ----------------------------------------------------------
-  // Panggilan kedua: harus memproses (progres 55)
-  // ----------------------------------------------------------
-  it("panggilan kedua mengembalikan status memproses dengan progres 55", async () => {
-    const auditId = `aud_test_${Date.now()}_b`;
-
-    // Panggilan 1
-    const p1 = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    await p1;
-
-    // Panggilan 2
-    const p2 = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await p2;
-
-    expect(hasil.status).toBe("memproses");
+    expect(hasil.id).toBe("aud_001");
     if (hasil.status === "memproses") {
       expect(hasil.progres_persen).toBe(55);
     }
   });
 
-  // ----------------------------------------------------------
-  // Panggilan ketiga: harus selesai dengan data lengkap
-  // ----------------------------------------------------------
-  it("panggilan ketiga mengembalikan status selesai dengan data audit", async () => {
-    const auditId = `aud_test_${Date.now()}_c`;
+  it("mengembalikan status selesai dengan data lengkap dari API", async () => {
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: {
+        id: "aud_002",
+        dokumen_kontrak_id: "dok_002",
+        status: "selesai",
+        skor_risiko: "kuning",
+        ringkasan: "Kontrak ini memiliki 2 klausul berisiko.",
+        dimulai_pada: "2026-08-23T09:00:00Z",
+        selesai_pada: "2026-08-23T09:01:00Z",
+        klausul: [
+          {
+            id: "kls_001",
+            nomor_urut: 1,
+            judul: "Klausul 1 — Denda",
+            teks_asli: "Denda 5% per hari.",
+            tingkat_risiko: "merah",
+            penjelasan: "Denda tidak wajar.",
+            rekomendasi: "Negosiasikan batas denda.",
+            ada_draft_negosiasi: true,
+          },
+        ],
+        statistik: {
+          total_klausul: 1,
+          klausul_merah: 1,
+          klausul_kuning: 0,
+          klausul_hijau: 0,
+        },
+      } satisfies HasilAuditSelesai,
+    });
 
-    for (let i = 0; i < 2; i++) {
-      const p = ambilHasilAudit(auditId);
-      await vi.runAllTimersAsync();
-      await p;
-    }
-
-    const p3 = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await p3;
-
-    expect(hasil.status).toBe("selesai");
-  });
-
-  // ----------------------------------------------------------
-  // Validasi struktur data hasil audit selesai
-  // ----------------------------------------------------------
-  it("hasil audit selesai memiliki semua field yang diperlukan dari api.md 7.2", async () => {
-    const auditId = `aud_test_${Date.now()}_d`;
-
-    for (let i = 0; i < 2; i++) {
-      const p = ambilHasilAudit(auditId);
-      await vi.runAllTimersAsync();
-      await p;
-    }
-
-    const p3 = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await p3;
+    const hasil = await ambilHasilAudit("aud_002");
 
     expect(hasil.status).toBe("selesai");
     const hasilSelesai = hasil as HasilAuditSelesai;
@@ -113,47 +117,55 @@ describe("audit-klausul service (mode mock)", () => {
     expect(hasilSelesai).toHaveProperty("selesai_pada");
     expect(hasilSelesai).toHaveProperty("klausul");
     expect(hasilSelesai).toHaveProperty("statistik");
-  });
 
-  // ----------------------------------------------------------
-  // Validasi skor risiko hanya berisi nilai yang valid
-  // ----------------------------------------------------------
-  it("skor_risiko hanya berisi hijau, kuning, atau merah", async () => {
-    const auditId = `aud_test_${Date.now()}_e`;
-
-    for (let i = 0; i < 2; i++) {
-      const p = ambilHasilAudit(auditId);
-      await vi.runAllTimersAsync();
-      await p;
-    }
-
-    const p3 = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await p3;
-
-    const hasilSelesai = hasil as HasilAuditSelesai;
+    // Skor risiko hanya berisi nilai yang valid
     expect(["hijau", "kuning", "merah"]).toContain(hasilSelesai.skor_risiko);
+
+    // Statistik konsisten dengan array klausul
+    const stat: StatistikAudit = hasilSelesai.statistik;
+    expect(stat.total_klausul).toBe(hasilSelesai.klausul.length);
+    expect(
+      stat.klausul_merah + stat.klausul_kuning + stat.klausul_hijau
+    ).toBe(stat.total_klausul);
   });
 
-  // ----------------------------------------------------------
-  // Validasi klausul — setiap klausul punya field wajib
-  // ----------------------------------------------------------
   it("setiap klausul memiliki field wajib dari api.md 7.2", async () => {
-    const auditId = `aud_test_${Date.now()}_f`;
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: {
+        id: "aud_003",
+        dokumen_kontrak_id: "dok_003",
+        status: "selesai",
+        skor_risiko: "hijau",
+        ringkasan: "Tidak ada risiko tinggi.",
+        dimulai_pada: "2026-08-23T09:00:00Z",
+        selesai_pada: "2026-08-23T09:01:00Z",
+        klausul: [
+          {
+            id: "kls_002",
+            nomor_urut: 1,
+            judul: "Klausul Pembayaran",
+            teks_asli: "Pembayaran 30 hari.",
+            tingkat_risiko: "hijau",
+            penjelasan: "Wajar.",
+            rekomendasi: "Tidak perlu perubahan.",
+            ada_draft_negosiasi: false,
+          },
+        ],
+        statistik: {
+          total_klausul: 1,
+          klausul_merah: 0,
+          klausul_kuning: 0,
+          klausul_hijau: 1,
+        },
+      } satisfies HasilAuditSelesai,
+    });
 
-    for (let i = 0; i < 2; i++) {
-      const p = ambilHasilAudit(auditId);
-      await vi.runAllTimersAsync();
-      await p;
-    }
-
-    const p3 = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await p3;
-
+    const hasil = await ambilHasilAudit("aud_003");
     const hasilSelesai = hasil as HasilAuditSelesai;
-    expect(hasilSelesai.klausul.length).toBeGreaterThan(0);
 
+    expect(hasilSelesai.klausul.length).toBeGreaterThan(0);
     hasilSelesai.klausul.forEach((klausul: DataKlausul) => {
       expect(klausul).toHaveProperty("id");
       expect(klausul).toHaveProperty("nomor_urut");
@@ -166,72 +178,52 @@ describe("audit-klausul service (mode mock)", () => {
       expect(["hijau", "kuning", "merah"]).toContain(klausul.tingkat_risiko);
     });
   });
-
-  // ----------------------------------------------------------
-  // Validasi statistik — jumlah harus konsisten
-  // ----------------------------------------------------------
-  it("statistik.total_klausul sesuai jumlah array klausul", async () => {
-    const auditId = `aud_test_${Date.now()}_g`;
-
-    for (let i = 0; i < 2; i++) {
-      const p = ambilHasilAudit(auditId);
-      await vi.runAllTimersAsync();
-      await p;
-    }
-
-    const p3 = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await p3;
-
-    const hasilSelesai = hasil as HasilAuditSelesai;
-    const stat: StatistikAudit = hasilSelesai.statistik;
-
-    expect(stat.total_klausul).toBe(hasilSelesai.klausul.length);
-    expect(
-      stat.klausul_merah + stat.klausul_kuning + stat.klausul_hijau
-    ).toBe(stat.total_klausul);
-  });
-
-  // ----------------------------------------------------------
-  // Validasi progres persen — harus dalam range 0-100
-  // ----------------------------------------------------------
-  it("progres_persen pada status memproses berada dalam range 0-100", async () => {
-    const auditId = `aud_test_${Date.now()}_h`;
-    const promise = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await promise;
-
-    if (hasil.status === "memproses") {
-      expect(hasil.progres_persen).toBeGreaterThanOrEqual(0);
-      expect(hasil.progres_persen).toBeLessThanOrEqual(100);
-    }
-  });
-
-  // ----------------------------------------------------------
-  // ID audit dipertahankan di setiap respons
-  // ----------------------------------------------------------
-  it("id audit konsisten di setiap panggilan polling", async () => {
-    const auditId = `aud_test_${Date.now()}_i`;
-    const promise = ambilHasilAudit(auditId);
-    await vi.runAllTimersAsync();
-    const hasil = await promise;
-
-    expect(hasil.id).toBe(auditId);
-  });
 });
 
 // ============================================================
-// Test dokumen-pratinjau service (api.md 6.3)
+// GET /dokumen-kontrak/:id — ambilDetailDokumen (api.md 6.3)
 // ============================================================
-describe("dokumen-pratinjau service (mode mock)", () => {
+describe("ambilDetailDokumen", () => {
   beforeEach(() => {
-    vi.stubEnv("NEXT_PUBLIC_MOCK_AUTH", "true");
+    mGet.mockReset();
   });
 
-  it("mengembalikan detail dokumen dengan url_pratinjau untuk ID yang dikenal", async () => {
-    const { ambilDetailDokumen } = await import(
-      "./services/dokumen-pratinjau.service"
-    );
+  // Fixture detail dokumen sesuai api.md 6.3
+  const DOKUMEN_FIKTIF: DetailDokumenKontrak = {
+    id: "dok_rani_001",
+    nama: "kontrak-desain-logo.pdf",
+    kategori: "desain",
+    status: "selesai",
+    skor_risiko: "kuning",
+    ukuran_bytes: 204800,
+    tipe_file: "application/pdf",
+    url_pratinjau: "https://contoh.id/pratinjau/dok_rani_001.pdf",
+    diunggah_pada: "2026-08-22T10:30:00Z",
+    dihapus_pada: null,
+    audit_id: "aud_rani_001",
+    revisi_dari_id: null,
+    nomor_revisi: 0,
+  };
+
+  it("memanggil GET /dokumen-kontrak/:id dengan auth", async () => {
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: DOKUMEN_FIKTIF,
+    });
+
+    await ambilDetailDokumen("dok_rani_001");
+
+    expect(mGet).toHaveBeenCalledWith("/dokumen-kontrak/dok_rani_001", true);
+  });
+
+  it("mengembalikan detail dokumen dengan url_pratinjau", async () => {
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: DOKUMEN_FIKTIF,
+    });
+
     const hasil = await ambilDetailDokumen("dok_rani_001");
 
     expect(hasil.id).toBe("dok_rani_001");
@@ -240,10 +232,13 @@ describe("dokumen-pratinjau service (mode mock)", () => {
   });
 
   it("mengembalikan semua field wajib dari api.md 6.3", async () => {
-    const { ambilDetailDokumen } = await import(
-      "./services/dokumen-pratinjau.service"
-    );
-    const hasil = await ambilDetailDokumen("dok_bima_001");
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: DOKUMEN_FIKTIF,
+    });
+
+    const hasil = await ambilDetailDokumen("dok_rani_001");
 
     expect(hasil).toHaveProperty("id");
     expect(hasil).toHaveProperty("nama");
@@ -258,38 +253,18 @@ describe("dokumen-pratinjau service (mode mock)", () => {
     expect(hasil).toHaveProperty("audit_id");
   });
 
-  it("mengembalikan fallback untuk ID dokumen yang tidak dikenal", async () => {
-    const { ambilDetailDokumen } = await import(
-      "./services/dokumen-pratinjau.service"
-    );
-    // ID dinamis dari alur unggah — harus dapat fallback
-    const hasil = await ambilDetailDokumen("dok_mock_tidak_dikenal");
-
-    expect(hasil.id).toBe("dok_mock_tidak_dikenal");
-    // Fallback tetap mengembalikan url_pratinjau
-    expect(hasil.url_pratinjau).not.toBeNull();
-  });
-
   it("status dokumen hanya berisi nilai yang valid", async () => {
-    const { ambilDetailDokumen } = await import(
-      "./services/dokumen-pratinjau.service"
-    );
-    const hasil = await ambilDetailDokumen("dok_rani_002");
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: DOKUMEN_FIKTIF,
+    });
+
+    const hasil = await ambilDetailDokumen("dok_rani_001");
 
     expect(["menunggu", "memproses", "selesai", "gagal"]).toContain(
       hasil.status
     );
-  });
-
-  it("url_pratinjau adalah string URL yang valid jika tidak null", async () => {
-    const { ambilDetailDokumen } = await import(
-      "./services/dokumen-pratinjau.service"
-    );
-    const hasil = await ambilDetailDokumen("dok_bima_002");
-
-    if (hasil.url_pratinjau !== null) {
-      expect(() => new URL(hasil.url_pratinjau!)).not.toThrow();
-    }
   });
 });
 

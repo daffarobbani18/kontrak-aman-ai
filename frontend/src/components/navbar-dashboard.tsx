@@ -67,24 +67,18 @@ export default function NavbarDashboard() {
   async function tanganiKeluar() {
     setSedangKeluar(true);
     try {
-      if (process.env.NEXT_PUBLIC_MOCK_AUTH === "true") {
-        // Mode mock: bersihkan session lokal dan langsung redirect
-        sessionStorage.removeItem("mock_email");
+      // Cabut refresh token di backend (POST /auth/keluar, api.md 4.6)
+      // Refresh token diambil otomatis via httpOnly cookie (credentials: "include" sudah
+      // diset di api-client.ts) — tidak perlu diakses dari JS secara eksplisit.
+      // keluar() juga memanggil hapusAccessToken() secara internal.
+      // Body refresh_token dikirim kosong karena backend membaca dari cookie,
+      // bukan dari body (sesuai arsitektur AGENTS.md Bagian 7).
+      try {
+        await keluar("");
+      } catch {
+        // Jika request gagal (jaringan putus atau token sudah expired di server),
+        // tetap bersihkan sisi client agar pengguna bisa logout
         hapusAccessToken();
-      } else {
-        // Mode produksi: cabut refresh token di backend (POST /auth/keluar, api.md 4.6)
-        // Refresh token diambil otomatis via httpOnly cookie (credentials: "include" sudah
-        // diset di api-client.ts) — tidak perlu diakses dari JS secara eksplisit.
-        // keluar() juga memanggil hapusAccessToken() secara internal.
-        // Body refresh_token dikirim kosong karena backend membaca dari cookie,
-        // bukan dari body (sesuai arsitektur AGENTS.md Bagian 7).
-        try {
-          await keluar("");
-        } catch {
-          // Jika request gagal (jaringan putus atau token sudah expired di server),
-          // tetap bersihkan sisi client agar pengguna bisa logout
-          hapusAccessToken();
-        }
       }
       router.push("/masuk");
     } finally {

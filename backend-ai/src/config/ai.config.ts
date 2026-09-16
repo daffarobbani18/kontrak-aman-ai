@@ -31,7 +31,7 @@ export const aiConfig = registerAs('ai', (): AiConfig => ({
   GROQ_API_KEY: process.env['GROQ_API_KEY'] ?? '',
   GROQ_BASE_URL: process.env['GROQ_BASE_URL'] ?? 'https://api.groq.com/openai/v1',
   GROQ_MODEL: process.env['GROQ_MODEL'] ?? 'llama-3.3-70b-versatile',
-  BACKEND_API_URL: process.env['BACKEND_API_URL'] ?? 'http://localhost:3000',
+  BACKEND_API_URL: process.env['BACKEND_API_URL'] ?? 'http://localhost:4000',
   INTERNAL_API_KEY: process.env['INTERNAL_API_KEY'] ?? '',
   SUPABASE_S3_ENDPOINT: process.env['SUPABASE_S3_ENDPOINT'] ?? '',
   SUPABASE_S3_BUCKET: process.env['SUPABASE_S3_BUCKET'] ?? '',

@@ -35,9 +35,11 @@ export class DtoMasuk {
 }
 
 export class DtoRefreshToken {
-  @ApiProperty()
+  /** Opsional — kalau kosong, backend pakai cookie refresh_token (httpOnly) */
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsString()
-  refreshToken!: string;
+  refreshToken?: string;
 }
 
 export class DtoLupaKataSandi {

@@ -1,220 +1,154 @@
 // ============================================================
 // Test negosiasi — KontrakAman AI
-// Cakupan: service mock, tipe validasi, siklus polling
+// Cakupan: service (via mock apiClient), template pengantar, tipe
 // Sesuai AGENTS.md Bagian 6: 70% untuk hooks/services/utils
 // ============================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   mintaDrafNegosiasi,
   ambilHasilNegosiasi,
-  resetRegistriMockNegosiasi,
 } from "./services/negosiasi.service";
-
-// Counter unik per test — hindari tabrakan Date.now() saat test berjalan cepat
-let urutan = 0;
-function idUnik(prefix: string): string {
-  return `${prefix}_${Date.now()}_${++urutan}`;
-}
 import type {
   HasilNegosiasiSelesai,
   HasilNegosiasiMemproses,
   ResponsPermintaanNegosiasi,
 } from "./types";
+import { apiClient } from "@/lib/api-client";
+
+// Mock apiClient di boundary — service tidak melakukan fetch sungguhan
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  apiClient: (await import("@/test/api-client-mock")).buatApiClientMock(),
+}));
+
+const mPost = vi.mocked(apiClient.post);
+const mGet = vi.mocked(apiClient.get);
 
 // ============================================================
-// Setup mock environment
+// Test service — POST /negosiasi (api.md 8.1)
 // ============================================================
-vi.stubEnv("NEXT_PUBLIC_MOCK_AUTH", "true");
-
-describe("negosiasi service (mode mock)", () => {
+describe("mintaDrafNegosiasi", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    // Reset registri mock antar test supaya state tidak bocor
-    resetRegistriMockNegosiasi();
+    mPost.mockReset();
+    mGet.mockReset();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  // ----------------------------------------------------------
-  // POST /negosiasi — mintaDrafNegosiasi
-  // ----------------------------------------------------------
-  it("mintaDrafNegosiasi mengembalikan respons 202 dengan status memproses", async () => {
-    const klausulId = idUnik("kls_test");
-    const promise = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const hasil = await promise;
-
-    expect(hasil.status).toBe("memproses");
-    expect(hasil.klausul_id).toBe(klausulId);
-    expect(hasil.id).toBeTruthy();
-    expect(hasil.dimulai_pada).toBeTruthy();
-  });
-
-  it("mintaDrafNegosiasi menyertakan timestamp dimulai_pada yang valid", async () => {
-    const klausulId = idUnik("kls_test");
-    const promise = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const hasil = await promise;
-
-    const tanggal = new Date(hasil.dimulai_pada);
-    expect(tanggal.toString()).not.toBe("Invalid Date");
-  });
-
-  it("mintaDrafNegosiasi klausul yang sama mengembalikan ID yang sama (simulasi KONFLIK)", async () => {
-    const klausulId = idUnik("kls_test");
-
-    const p1 = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const hasil1 = await p1;
-
-    const p2 = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const hasil2 = await p2;
-
-    expect(hasil1.id).toBe(hasil2.id);
-  });
-
-  // ----------------------------------------------------------
-  // GET /negosiasi/:id — ambilHasilNegosiasi (polling)
-  // ----------------------------------------------------------
-  it("panggilan pertama ambilHasilNegosiasi mengembalikan status memproses", async () => {
-    const klausulId = idUnik("kls_test");
-    const pMinta = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const responsPermintaan = await pMinta;
-
-    const pHasil = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    const hasil = await pHasil;
-
-    expect(hasil.status).toBe("memproses");
-  });
-
-  it("panggilan kedua ambilHasilNegosiasi mengembalikan status selesai", async () => {
-    const klausulId = idUnik("kls_test");
-    const pMinta = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const responsPermintaan = await pMinta;
-
-    // Polling pertama
-    const p1 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    await p1;
-
-    // Polling kedua — seharusnya selesai
-    const p2 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    const hasil = await p2;
-
-    expect(hasil.status).toBe("selesai");
-  });
-
-  it("hasil negosiasi selesai memiliki semua field wajib dari api.md 8.2", async () => {
-    const klausulId = idUnik("kls_test");
-    const pMinta = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const responsPermintaan = await pMinta;
-
-    const p1 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    await p1;
-
-    const p2 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    const hasil = await p2;
-
-    expect(hasil.status).toBe("selesai");
-    const hasilSelesai = hasil as HasilNegosiasiSelesai;
-    expect(hasilSelesai).toHaveProperty("id");
-    expect(hasilSelesai).toHaveProperty("klausul_id");
-    expect(hasilSelesai).toHaveProperty("teks_asli_klausul");
-    expect(hasilSelesai).toHaveProperty("draft_negosiasi");
-    expect(hasilSelesai).toHaveProperty("selesai_pada");
-    expect(hasilSelesai.draft_negosiasi).toHaveProperty("versi");
-  });
-
-  it("draft_negosiasi memiliki tepat 3 versi (lunak, standar, tegas)", async () => {
-    const klausulId = idUnik("kls_test");
-    const pMinta = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const responsPermintaan = await pMinta;
-
-    const p1 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    await p1;
-
-    const p2 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    const hasil = await p2;
-
-    const hasilSelesai = hasil as HasilNegosiasiSelesai;
-    expect(hasilSelesai.draft_negosiasi.versi).toHaveLength(3);
-  });
-
-  it("setiap versi draf memiliki label dan teks yang tidak kosong", async () => {
-    const klausulId = idUnik("kls_test");
-    const pMinta = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const responsPermintaan = await pMinta;
-
-    const p1 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    await p1;
-
-    const p2 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    const hasil = await p2;
-
-    const hasilSelesai = hasil as HasilNegosiasiSelesai;
-    hasilSelesai.draft_negosiasi.versi.forEach((versi) => {
-      expect(versi.label).toBeTruthy();
-      expect(versi.teks).toBeTruthy();
-      expect(versi.teks.length).toBeGreaterThan(20);
+  it("memanggil POST /negosiasi dengan body klausul_id", async () => {
+    const fixture: ResponsPermintaanNegosiasi = {
+      id: "neg_001",
+      klausul_id: "kls_001",
+      status: "memproses",
+      dimulai_pada: "2026-08-23T09:00:00Z",
+    };
+    mPost.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "Permintaan draf negosiasi diterima.",
+      data: fixture,
     });
+
+    const hasil = await mintaDrafNegosiasi("kls_001");
+
+    expect(mPost).toHaveBeenCalledWith(
+      "/negosiasi",
+      { klausul_id: "kls_001" },
+      true
+    );
+    expect(hasil).toEqual(fixture);
   });
 
-  it("selesai_pada adalah format ISO 8601 yang valid", async () => {
-    const klausulId = idUnik("kls_test");
-    const pMinta = mintaDrafNegosiasi(klausulId);
-    await vi.runAllTimersAsync();
-    const responsPermintaan = await pMinta;
+  it("menyertakan konteks_tambahan di body jika diberikan", async () => {
+    mPost.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: {
+        id: "neg_002",
+        klausul_id: "kls_002",
+        status: "memproses",
+        dimulai_pada: "2026-08-23T09:00:00Z",
+      },
+    });
 
-    const p1 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    await p1;
+    await mintaDrafNegosiasi("kls_002", "Klien terbuka pada revisi denda");
 
-    const p2 = ambilHasilNegosiasi(responsPermintaan.id);
-    await vi.runAllTimersAsync();
-    const hasil = await p2;
-
-    const hasilSelesai = hasil as HasilNegosiasiSelesai;
-    const tanggal = new Date(hasilSelesai.selesai_pada);
-    expect(tanggal.toString()).not.toBe("Invalid Date");
+    expect(mPost).toHaveBeenCalledWith(
+      "/negosiasi",
+      {
+        klausul_id: "kls_002",
+        konteks_tambahan: "Klien terbuka pada revisi denda",
+      },
+      true
+    );
   });
 });
 
 // ============================================================
-// Test F-NEGO-04 — data template pengantar (konten statis)
+// Test service — GET /negosiasi/:id (api.md 8.2)
+// ============================================================
+describe("ambilHasilNegosiasi", () => {
+  beforeEach(() => {
+    mPost.mockReset();
+    mGet.mockReset();
+  });
+
+  it("memanggil GET /negosiasi/:id dan mengembalikan data", async () => {
+    const fixture: HasilNegosiasiSelesai = {
+      id: "neg_001",
+      klausul_id: "kls_001",
+      status: "selesai",
+      teks_asli_klausul: "Klausul denda 5% per hari.",
+      draft_negosiasi: {
+        versi: [
+          { label: "Negosiasi Lunak", teks: "Saya usulkan batas denda 10%." },
+          { label: "Negosiasi Standar", teks: "Denda maksimum 15%." },
+          { label: "Negosiasi Tegas", teks: "Klausul ini harus direvisi." },
+        ],
+      },
+      selesai_pada: "2026-08-23T09:01:00Z",
+    };
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "Hasil negosiasi berhasil diambil.",
+      data: fixture,
+    });
+
+    const hasil = await ambilHasilNegosiasi("neg_001");
+
+    expect(mGet).toHaveBeenCalledWith("/negosiasi/neg_001", true);
+    expect(hasil.status).toBe("selesai");
+    expect(hasil).toEqual(fixture);
+  });
+
+  it("status memproses dikembalikan apa adanya untuk polling", async () => {
+    const fixture: HasilNegosiasiMemproses = {
+      id: "neg_003",
+      klausul_id: "kls_003",
+      status: "memproses",
+    };
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: fixture,
+    });
+
+    const hasil = await ambilHasilNegosiasi("neg_003");
+    expect(hasil.status).toBe("memproses");
+  });
+});
+
+// ============================================================
+// Test template pengantar (F-NEGO-04) — konten statis
 // ============================================================
 describe("template pengantar (F-NEGO-04)", () => {
   it("terdapat tepat 3 template dengan ID unik", async () => {
-    const { TEMPLATE_PENGANTAR } = await import(
-      "./data/template-pengantar"
-    );
+    const { TEMPLATE_PENGANTAR } = await import("./data/template-pengantar");
     expect(TEMPLATE_PENGANTAR).toHaveLength(3);
     const ids = TEMPLATE_PENGANTAR.map((t) => t.id);
-    const idUnik = new Set(ids);
-    expect(idUnik.size).toBe(3);
+    expect(new Set(ids).size).toBe(3);
   });
 
   it("setiap template memiliki id, label, deskripsi, dan teks yang tidak kosong", async () => {
-    const { TEMPLATE_PENGANTAR } = await import(
-      "./data/template-pengantar"
-    );
+    const { TEMPLATE_PENGANTAR } = await import("./data/template-pengantar");
     TEMPLATE_PENGANTAR.forEach((template) => {
       expect(template.id.length).toBeGreaterThan(0);
       expect(template.label.length).toBeGreaterThan(0);
@@ -250,9 +184,7 @@ describe("template pengantar (F-NEGO-04)", () => {
   });
 
   it("template mencakup tiga nada: santai, standar, dan tegas", async () => {
-    const { TEMPLATE_PENGANTAR } = await import(
-      "./data/template-pengantar"
-    );
+    const { TEMPLATE_PENGANTAR } = await import("./data/template-pengantar");
     const ids = TEMPLATE_PENGANTAR.map((t) => t.id);
     expect(ids).toContain("santai");
     expect(ids).toContain("standar");
@@ -260,9 +192,7 @@ describe("template pengantar (F-NEGO-04)", () => {
   });
 
   it("teks template tidak mengandung bahasa yang menuduh klien", async () => {
-    const { TEMPLATE_PENGANTAR } = await import(
-      "./data/template-pengantar"
-    );
+    const { TEMPLATE_PENGANTAR } = await import("./data/template-pengantar");
     const kataYangDilarang = ["tidak adil", "curang", "manipulasi", "jebakan", "merugikan"];
     TEMPLATE_PENGANTAR.forEach((template) => {
       kataYangDilarang.forEach((kata) => {

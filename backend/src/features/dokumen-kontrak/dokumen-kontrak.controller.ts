@@ -74,6 +74,17 @@ export class DokumenKontrakController {
     return { pesan: 'Revisi dokumen berhasil diunggah', data: hasil };
   }
 
+  // GET /v1/dokumen-kontrak/:id/revisi
+  @Get(':id/revisi')
+  @ApiOperation({ summary: 'Riwayat revisi dokumen — daftar dokumen turunan (F-DOC-05)' })
+  async riwayatRevisi(
+    @CurrentUser() pengguna: PenggunaAktif,
+    @Param('id') id: string,
+  ) {
+    const hasil = await this.dokumenService.riwayatRevisi(pengguna.id, id);
+    return { pesan: 'Riwayat revisi berhasil diambil', data: hasil };
+  }
+
   // DELETE /v1/dokumen-kontrak/:id
   @Delete(':id')
   @HttpCode(HttpStatus.OK)

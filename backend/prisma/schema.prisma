@@ -76,6 +76,15 @@ enum QuotaType {
   @@map("quota_type")
 }
 
+enum NotificationType {
+  AUDIT_SELESAI
+  NEGOSIASI_SELESAI
+  DOKUMEN_PURGE
+  LANGGANAN
+
+  @@map("notification_type")
+}
+
 // =============================================================================
 // MODEL: Plan
 // =============================================================================
@@ -135,6 +144,7 @@ model User {
   quota_overrides QuotaOverride[]
   usage_counters  UsageCounter[]
   audit_logs      AuditLog[]
+  notifications   Notification[]
 
   @@map("users")
 }
@@ -297,6 +307,27 @@ model Negotiation {
   @@index([user_id])
   @@index([status])
   @@map("negotiations")
+}
+
+// =============================================================================
+// MODEL: Notification
+// =============================================================================
+
+model Notification {
+  id          String          @id @default(cuid())
+  user_id     String
+  type        NotificationType
+  title       String
+  body        String          @db.Text
+  entity_type String?
+  entity_id   String?
+  read_at     DateTime?
+  created_at  DateTime        @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id, read_at])
+  @@map("notifications")
 }
 
 // =============================================================================

@@ -10,9 +10,6 @@
 // - Reducer dari notifikasi.utils.ts (tidak ada duplikasi)
 // - Optimistic update untuk tandai dibaca — UI berubah langsung
 //   tanpa menunggu API (bukan operasi kritis, tidak perlu rollback)
-//
-// Untuk disambungkan ke backend:
-//   Cukup set NEXT_PUBLIC_MOCK_AUTH=false — service sudah siap
 // ============================================================
 
 import { useCallback, useEffect, useReducer } from "react";
@@ -28,7 +25,6 @@ export function useNotifikasi() {
 
   // ── Fetch notifikasi saat mount ──
   // Panggil GET /notifikasi (api.md 11.1) via service
-  // Mode mock: generate dari data dokumen mock
   useEffect(() => {
     let dibatalkan = false;
 

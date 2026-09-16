@@ -1,13 +1,10 @@
 // ============================================================
 // Test notifikasi — KontrakAman AI
-// Cakupan: reducer, generator notifikasi, deduplication, service mock
-// Sesuai AGENTS.md Bagian 6: 70% untuk hooks/services/utils
-//
-// Reducer dan helper diimport dari notifikasi.utils.ts —
-// tidak ada duplikasi (AGENTS.md Bagian 5: DRY)
+// Cakupan: reducer, generator notifikasi, service (via mock apiClient)
+// Reducer dan helper diimport dari notifikasi.utils.ts — DRY
 // ============================================================
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ItemNotifikasi, StateNotifikasi } from "./types";
 import type { ItemDokumenKontrak } from "@/features/dashboard/types";
 import {
@@ -20,12 +17,17 @@ import {
   ambilNotifikasi,
   tandaiDibaca,
   tandaiSemuaDibaca,
-  resetStateMockNotifikasi,
 } from "./services/notifikasi.service";
+import { apiClient } from "@/lib/api-client";
 
-// Paksa mode mock agar service tidak memanggil backend sungguhan
-// Pola yang sama dengan privasi.test.ts
-vi.stubEnv("NEXT_PUBLIC_MOCK_AUTH", "true");
+// Mock apiClient di boundary — service tidak melakukan fetch sungguhan
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  apiClient: (await import("@/test/api-client-mock")).buatApiClientMock(),
+}));
+
+const mGet = vi.mocked(apiClient.get);
+const mPatch = vi.mocked(apiClient.patch);
 
 // ============================================================
 // Fixture data
@@ -240,132 +242,102 @@ describe("reducer notifikasi — SET_MEMUAT", () => {
 });
 
 // ============================================================
-// Test notifikasi.service.ts — mode mock
-// Memverifikasi service mengembalikan data yang benar
-// tanpa memanggil backend sungguhan
+// Test notifikasi.service.ts — via mock apiClient
+// Memverifikasi path, query params, dan konversi snake_case → camelCase
 // ============================================================
-describe("ambilNotifikasi — mode mock", () => {
+describe("ambilNotifikasi", () => {
   beforeEach(() => {
-    resetStateMockNotifikasi();
-    // Pastikan session storage menunjuk ke user yang punya dokumen
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("mock_email", "rani@example.com");
-    }
+    mGet.mockReset();
+    mPatch.mockReset();
   });
 
-  it("mengembalikan array notifikasi", async () => {
-    const respons = await ambilNotifikasi();
-    expect(Array.isArray(respons.data)).toBe(true);
+  it("memanggil GET /notifikasi tanpa query saat tidak ada opsi", async () => {
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { data: [], paginasi: { cursor_berikutnya: null, ada_lagi: false, total: 0 } },
+    });
+
+    await ambilNotifikasi();
+
+    expect(mGet).toHaveBeenCalledWith("/notifikasi");
   });
 
-  it("mengembalikan objek paginasi yang valid", async () => {
-    const respons = await ambilNotifikasi();
-    expect(respons.paginasi).toHaveProperty("cursor_berikutnya");
-    expect(respons.paginasi).toHaveProperty("ada_lagi");
-    expect(respons.paginasi).toHaveProperty("total");
+  it("menyusun query params sudah_dibaca, limit, cursor", async () => {
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { data: [], paginasi: { cursor_berikutnya: null, ada_lagi: false, total: 0 } },
+    });
+
+    await ambilNotifikasi({ sudah_dibaca: false, limit: 5, cursor: "abc" });
+
+    const path = mGet.mock.calls[0][0] as string;
+    expect(path).toContain("/notifikasi?");
+    expect(path).toContain("sudah_dibaca=false");
+    expect(path).toContain("limit=5");
+    expect(path).toContain("cursor=abc");
   });
 
-  it("setiap notifikasi memiliki field wajib sesuai api.md 11.1", async () => {
-    const respons = await ambilNotifikasi();
-    // Rani punya 2 dokumen selesai — pastikan ada notifikasi
-    expect(respons.data.length).toBeGreaterThan(0);
-    for (const item of respons.data) {
-      expect(item).toHaveProperty("id");
-      expect(item).toHaveProperty("jenis");
-      expect(item).toHaveProperty("judul");
-      expect(item).toHaveProperty("pesan");
-      expect(item).toHaveProperty("sudahDibaca");
-      expect(item).toHaveProperty("dibuatPada");
-      expect(item).toHaveProperty("hrefTujuan");
-      expect(item).toHaveProperty("meta");
-    }
-  });
+  it("mengkonversi item snake_case dari API ke camelCase", async () => {
+    mGet.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: {
+        data: [
+          {
+            id: "notif_001",
+            jenis: "audit_selesai",
+            judul: "Audit selesai",
+            pesan: "Skor: Risiko Tinggi",
+            sudah_dibaca: false,
+            dibuat_pada: "2026-08-22T10:30:00Z",
+            href_tujuan: "/audit/aud_001",
+            meta: { audit_id: "aud_001", skor_risiko: "merah" },
+          },
+        ],
+        paginasi: { cursor_berikutnya: null, ada_lagi: false, total: 1 },
+      },
+    });
 
-  it("jenis notifikasi hanya berisi nilai yang valid", async () => {
-    const jenisValid = ["audit_selesai", "audit_gagal", "pengingat_tindak_lanjut"];
-    const respons = await ambilNotifikasi();
-    for (const item of respons.data) {
-      expect(jenisValid).toContain(item.jenis);
-    }
-  });
+    const hasil = await ambilNotifikasi();
 
-  it("notifikasi audit_selesai memiliki hrefTujuan ke /audit/:id", async () => {
-    const respons = await ambilNotifikasi();
-    const auditSelesai = respons.data.filter((n) => n.jenis === "audit_selesai");
-    for (const item of auditSelesai) {
-      expect(item.hrefTujuan).toMatch(/^\/audit\//);
-    }
-  });
-
-  it("sudahDibaca berupa boolean", async () => {
-    const respons = await ambilNotifikasi();
-    for (const item of respons.data) {
-      expect(typeof item.sudahDibaca).toBe("boolean");
-    }
-  });
-
-  it("filter sudah_dibaca=false mengembalikan hanya yang belum dibaca", async () => {
-    const respons = await ambilNotifikasi({ sudah_dibaca: false });
-    for (const item of respons.data) {
-      expect(item.sudahDibaca).toBe(false);
-    }
-  });
-
-  it("limit membatasi jumlah notifikasi yang dikembalikan", async () => {
-    const respons = await ambilNotifikasi({ limit: 1 });
-    expect(respons.data.length).toBeLessThanOrEqual(1);
+    expect(hasil.data).toHaveLength(1);
+    const item = hasil.data[0];
+    expect(item.sudahDibaca).toBe(false);
+    expect(item.dibuatPada).toBe("2026-08-22T10:30:00Z");
+    expect(item.hrefTujuan).toBe("/audit/aud_001");
+    expect(item.meta.auditId).toBe("aud_001");
+    expect(item.meta.skorRisiko).toBe("merah");
   });
 });
 
-describe("tandaiDibaca — mode mock", () => {
+describe("tandaiDibaca", () => {
   beforeEach(() => {
-    resetStateMockNotifikasi();
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("mock_email", "rani@example.com");
-    }
+    mPatch.mockReset();
+    mGet.mockReset();
   });
 
-  it("tidak melempar error saat dipanggil dengan id valid", async () => {
-    await expect(tandaiDibaca("notif_audit_aud_rani_001")).resolves.toBeUndefined();
-  });
+  it("memanggil PATCH /notifikasi/:id/baca", async () => {
+    mPatch.mockResolvedValueOnce({ berhasil: true, pesan: "OK", data: null });
 
-  it("notifikasi yang ditandai muncul sebagai dibaca di fetch berikutnya", async () => {
-    // Ambil dulu — cari id notifikasi yang ada
-    const sebelum = await ambilNotifikasi();
-    const itemPertama = sebelum.data[0];
-    if (!itemPertama) return; // skip jika tidak ada notifikasi
+    await tandaiDibaca("notif_001");
 
-    await tandaiDibaca(itemPertama.id);
-
-    const sesudah = await ambilNotifikasi();
-    const itemSesudah = sesudah.data.find((n) => n.id === itemPertama.id);
-    expect(itemSesudah?.sudahDibaca).toBe(true);
+    expect(mPatch).toHaveBeenCalledWith("/notifikasi/notif_001/baca");
   });
 });
 
-describe("tandaiSemuaDibaca — mode mock", () => {
+describe("tandaiSemuaDibaca", () => {
   beforeEach(() => {
-    resetStateMockNotifikasi();
-    if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("mock_email", "rani@example.com");
-    }
+    mPatch.mockReset();
+    mGet.mockReset();
   });
 
-  it("tidak melempar error saat dipanggil", async () => {
-    await expect(tandaiSemuaDibaca()).resolves.toBeUndefined();
-  });
+  it("memanggil PATCH /notifikasi/baca-semua", async () => {
+    mPatch.mockResolvedValueOnce({ berhasil: true, pesan: "OK", data: null });
 
-  it("semua notifikasi menjadi dibaca setelah dipanggil", async () => {
     await tandaiSemuaDibaca();
-    const respons = await ambilNotifikasi();
-    for (const item of respons.data) {
-      expect(item.sudahDibaca).toBe(true);
-    }
-  });
 
-  it("filter sudah_dibaca=false tidak mengembalikan item setelah tandai semua", async () => {
-    await tandaiSemuaDibaca();
-    const respons = await ambilNotifikasi({ sudah_dibaca: false });
-    expect(respons.data.length).toBe(0);
+    expect(mPatch).toHaveBeenCalledWith("/notifikasi/baca-semua");
   });
 });

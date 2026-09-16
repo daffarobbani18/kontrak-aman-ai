@@ -5,10 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { skemaResetKataSandi, type TipeResetKataSandi } from "@/features/autentikasi/types";
 import { resetKataSandi } from "@/features/autentikasi/services/autentikasi.service";
-import { mockResetKataSandi } from "@/lib/mock-auth";
 import { KesalahanAPI, KODE_ERROR } from "@/lib/api-client";
-
-const PAKAI_MOCK = process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
 // ============================================================
 // Hook useResetKataSandi
@@ -37,7 +34,7 @@ export function useResetKataSandi(token: string) {
     setPesanKesalahan(null);
 
     try {
-      PAKAI_MOCK ? await mockResetKataSandi(data.token) : await resetKataSandi(data);
+      await resetKataSandi(data);
       setStatus("berhasil");
     } catch (error) {
       if (error instanceof KesalahanAPI) {

@@ -5,10 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { skemaLupaKataSandi, type TipeLupaKataSandi } from "@/features/autentikasi/types";
 import { lupaKataSandi } from "@/features/autentikasi/services/autentikasi.service";
-import { mockLupaKataSandi } from "@/lib/mock-auth";
 import { KesalahanAPI, KODE_ERROR } from "@/lib/api-client";
-
-const PAKAI_MOCK = process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
 // ============================================================
 // Hook useLupaKataSandi
@@ -35,7 +32,7 @@ export function useLupaKataSandi() {
     setPesanKesalahan(null);
 
     try {
-      PAKAI_MOCK ? await mockLupaKataSandi() : await lupaKataSandi(data);
+      await lupaKataSandi(data);
       // Tampilkan pesan sukses generik terlepas dari apakah email terdaftar
       // Sesuai api.md 4.7 — mencegah enumerasi email
       setStatus("terkirim");

@@ -11,9 +11,6 @@
 // Polling GET /ekspor-data/status setiap INTERVAL_POLL_MS selama
 // status backend masih "memproses". Berhenti otomatis saat selesai
 // atau saat komponen unmount (cleanup via useEffect return).
-//
-// Untuk disambungkan ke backend:
-//   Cukup set NEXT_PUBLIC_MOCK_AUTH=false — service sudah siap
 // ============================================================
 
 import { useCallback, useEffect, useReducer, useRef } from "react";

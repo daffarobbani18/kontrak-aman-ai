@@ -12,6 +12,7 @@ import { PrismaService } from '../../shared/prisma/prisma.module';
 import { KuotaService } from '../../shared/kuota/kuota.module';
 import { EmailService } from '../../shared/email/email.module';
 import { AuditLogService } from '../../shared/audit-log/audit-log.module';
+import { NotifikasiService } from '../notifikasi/notifikasi.service';
 import { Prisma } from '@prisma/client';
 import { ANTRIAN_DRAF_NEGOSIASI } from '../../shared/queue/queue.module';
 import {
@@ -30,6 +31,7 @@ export class NegosiasiService {
     private readonly email: EmailService,
     private readonly cfg: ConfigService,
     private readonly auditLog: AuditLogService,
+    private readonly notifikasi: NotifikasiService,
     @InjectQueue(ANTRIAN_DRAF_NEGOSIASI)
     private readonly antrianNegosiasi: Queue,
   ) {}
@@ -408,11 +410,23 @@ export class NegosiasiService {
       }
     });
 
+    // Buat notifikasi in-app jika negosiasi berhasil (F-NOTIF)
+    if (dto.status === 'COMPLETED') {
+      await this.notifikasi.buat({
+        penggunaId: negosiasi.user_id,
+        tipe: 'NEGOSIASI_SELESAI',
+        judul: 'Draf negosiasi selesai',
+        isi: 'Draf negosiasi kontrakmu sudah siap. Klik untuk meninjau dan menyunting.',
+        tipeEntitas: 'negosiasi',
+        idEntitas: dto.negosiasiId,
+      });
+    }
+
     // Kirim notifikasi email jika pengguna mengaktifkannya dan negosiasi berhasil
     if (dto.status === 'COMPLETED' && negosiasi.user.notif_email_audit) {
       const urlFrontend = this.cfg.get<string>(
         'FRONTEND_URL',
-        'http://localhost:3001',
+        'http://localhost:3000',
       );
       try {
         await this.email.kirim({

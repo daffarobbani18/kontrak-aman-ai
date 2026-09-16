@@ -19,6 +19,7 @@ import {
 } from './dto/audit.dto';
 import { ConfigService } from '@nestjs/config';
 import { AuditLogService } from '../../shared/audit-log/audit-log.module';
+import { NotifikasiService } from '../notifikasi/notifikasi.service';
 
 @Injectable()
 export class AuditService {
@@ -30,6 +31,7 @@ export class AuditService {
     private readonly email: EmailService,
     private readonly cfg: ConfigService,
     private readonly auditLog: AuditLogService,
+    private readonly notifikasi: NotifikasiService,
     @InjectQueue(ANTRIAN_AUDIT_KONTRAK)
     private readonly antrianAudit: Queue,
   ) {}
@@ -187,6 +189,7 @@ export class AuditService {
             notif_email_audit: true,
           },
         },
+        document: { select: { file_name: true } },
       },
     });
 
@@ -229,11 +232,26 @@ export class AuditService {
       }
     });
 
+    // Buat notifikasi in-app jika audit berhasil (F-NOTIF)
+    if (dto.status === 'COMPLETED') {
+      await this.notifikasi.buat({
+        penggunaId: audit.user_id,
+        tipe: 'AUDIT_SELESAI',
+        judul: 'Audit kontrak selesai',
+        isi:
+          audit.document?.file_name
+            ? `Hasil audit untuk dokumen "${audit.document.file_name}" sudah tersedia.`
+            : 'Hasil audit kontrakmu sudah tersedia. Klik untuk melihat detail.',
+        tipeEntitas: 'audit',
+        idEntitas: dto.auditId,
+      });
+    }
+
     // Kirim notifikasi email jika berhasil DAN pengguna mengaktifkan notifikasi
     if (dto.status === 'COMPLETED' && audit.user.notif_email_audit) {
       const frontendUrl = this.cfg.get<string>(
         'FRONTEND_URL',
-        'http://localhost:3001',
+        'http://localhost:3000',
       );
       const tautanHasil = `${frontendUrl}/audit/${dto.auditId}`;
       this.email

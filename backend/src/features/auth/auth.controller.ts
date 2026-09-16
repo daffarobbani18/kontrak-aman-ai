@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -73,14 +74,19 @@ export class AuthController {
     return { pesan: 'Email berhasil diverifikasi', data: null };
   }
 
-  // ── Masuk ────────────────────────────────────────────────────────────────────
+  // ── Masuk ────────────────────────────────────────────────────────────────
   @Public()
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   @Post('masuk')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login dengan email & kata sandi' })
-  async masuk(@Body() dto: DtoMasuk) {
+  async masuk(
+    @Body() dto: DtoMasuk,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const token = await this.authService.masuk(dto);
+    // Refresh token juga dikirim via httpOnly cookie — jangan disimpan di localStorage
+    this.aturCookieRefresh(res, token.refresh_token);
     return { pesan: 'Login berhasil', data: token };
   }
 
@@ -102,7 +108,9 @@ export class AuthController {
     @Res() res: Response,
   ): Promise<void> {
     const token = await this.authService.masukDenganGoogle(req.user);
-    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3001');
+    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3000');
+    // Refresh token juga disetel sebagai httpOnly cookie
+    this.aturCookieRefresh(res, token.refreshToken);
     // Redirect ke frontend dengan token di fragment (#) agar tidak masuk server log / browser history
     res.redirect(
       `${frontendUrl}/auth/callback#accessToken=${token.accessToken}&refreshToken=${token.refreshToken}`,
@@ -113,9 +121,20 @@ export class AuthController {
   @Public()
   @Post('perbarui-token')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Perbarui access token menggunakan refresh token' })
-  async perbaruiToken(@Body() dto: DtoRefreshToken) {
-    const token = await this.authService.refreshToken(dto.refreshToken);
+  @ApiOperation({ summary: 'Perbarui access token menggunakan refresh token (cookie httpOnly atau body)' })
+  async perbaruiToken(
+    @Body() dto: DtoRefreshToken,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // Ambil refresh token dari body, fallback ke cookie httpOnly
+    const refreshToken = dto.refreshToken ?? req.cookies?.['refresh_token'];
+    if (!refreshToken) {
+      throw new BadRequestException('Refresh token tidak ditemukan');
+    }
+    const token = await this.authService.refreshToken(refreshToken);
+    // Rotasi cookie dengan refresh token baru
+    this.aturCookieRefresh(res, token.refresh_token);
     return { pesan: 'Token berhasil diperbarui', data: token };
   }
 
@@ -124,8 +143,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Logout dan cabut semua refresh token' })
-  async keluar(@CurrentUser() pengguna: PenggunaAktif) {
+  async keluar(
+    @CurrentUser() pengguna: PenggunaAktif,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     await this.authService.keluar(pengguna.id);
+    // Hapus cookie refresh token saat logout
+    this.hapusCookieRefresh(res);
     return { pesan: 'Berhasil keluar', data: null };
   }
 
@@ -149,8 +173,29 @@ export class AuthController {
   @Post('reset-kata-sandi')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset kata sandi dengan token' })
-  async resetKataSandi(@Body() dto: DtoResetKataSandi) {
+  async resetKataSandi(
+    @Body() dto: DtoResetKataSandi,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     await this.authService.resetKataSandi(dto);
+    // Semua refresh token dicabut oleh service — hapus cookie juga
+    this.hapusCookieRefresh(res);
     return { pesan: 'Kata sandi berhasil diubah', data: null };
+  }
+
+  // ── Helper cookie refresh token (httpOnly) ────────────────────────────────
+  private aturCookieRefresh(res: Response, refreshToken: string): void {
+    const secure = this.cfg.get<string>('NODE_ENV', 'development') === 'production';
+    res.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/v1/auth', // hanya dikirim ke endpoint auth
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 hari — selaras JWT_REFRESH_EXPIRES_IN
+    });
+  }
+
+  private hapusCookieRefresh(res: Response): void {
+    res.clearCookie('refresh_token', { path: '/v1/auth' });
   }
 }

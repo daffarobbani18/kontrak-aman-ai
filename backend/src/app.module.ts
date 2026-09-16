@@ -17,6 +17,7 @@ import { DokumenKontrakModule } from './features/dokumen-kontrak/dokumen-kontrak
 import { AuditModule } from './features/audit/audit.module';
 import { NegosiasiModule } from './features/negosiasi/negosiasi.module';
 import { LanggananModule } from './features/langganan/langganan.module';
+import { NotifikasiModule } from './features/notifikasi/notifikasi.module';
 import { WebhookModule } from './features/webhook/webhook.module';
 import { AdminModule } from './features/admin/admin.module';
 
@@ -85,6 +86,7 @@ import { AdminModule } from './features/admin/admin.module';
     AuditModule,
     NegosiasiModule,
     LanggananModule,
+    NotifikasiModule,
     WebhookModule,
     AdminModule,
   ],

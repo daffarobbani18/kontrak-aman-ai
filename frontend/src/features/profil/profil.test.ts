@@ -1,39 +1,71 @@
 // ============================================================
 // Test profil — KontrakAman AI
-// Cakupan: service mock, validasi schema Zod
+// Cakupan: service (via mock apiClient), validasi schema Zod
 // Sesuai AGENTS.md Bagian 6: 70% untuk hooks/services/utils
 // ============================================================
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   perbaruhiProfil,
   ubahKataSandi,
   simpanOnboarding,
-  resetStateMockProfil,
 } from "./services/profil.service";
 import { skemaEditProfil, skemaUbahKataSandi } from "./types";
+import { apiClient } from "@/lib/api-client";
+
+// Mock apiClient di boundary — service tidak melakukan fetch sungguhan
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
+  apiClient: (await import("@/test/api-client-mock")).buatApiClientMock(),
+}));
+
+const mPatch = vi.mocked(apiClient.patch);
+const mPost = vi.mocked(apiClient.post);
+
+// Fixture respons API profil sesuai api.md 5.2
+const PROFIL_FIKTIF = {
+  id: "usr_001",
+  nama_lengkap: "Rani Desainer",
+  email: "rani@contoh.id",
+  avatar_url: null,
+  profesi: null,
+  onboarding_selesai: false,
+  dibuat_pada: "2026-08-01T09:00:00Z",
+};
 
 // ============================================================
-// Setup mock environment
+// PATCH /pengguna/saya — perbaruhiProfil
 // ============================================================
-vi.stubEnv("NEXT_PUBLIC_MOCK_AUTH", "true");
-
-describe("profil service (mode mock)", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
+describe("perbaruhiProfil", () => {
+  beforeEach(() => {
+    mPatch.mockReset();
   });
 
-  // ----------------------------------------------------------
-  // PATCH /pengguna/saya — perbaruhiProfil
-  // ----------------------------------------------------------
-  it("perbaruhiProfil mengembalikan profil yang diperbarui", async () => {
+  it("memanggil PATCH /pengguna/saya dengan nama_lengkap", async () => {
+    mPatch.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { ...PROFIL_FIKTIF, nama_lengkap: "Rani Desainer Baru" },
+    });
+
     const hasil = await perbaruhiProfil("Rani Desainer Baru");
 
+    expect(mPatch).toHaveBeenCalledWith(
+      "/pengguna/saya",
+      { nama_lengkap: "Rani Desainer Baru" },
+      true
+    );
     expect(hasil.berhasil).toBe(true);
     expect(hasil.data.nama_lengkap).toBe("Rani Desainer Baru");
   });
 
-  it("perbaruhiProfil mengembalikan field wajib dari api.md 5.2", async () => {
+  it("mengembalikan field wajib dari api.md 5.2", async () => {
+    mPatch.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { ...PROFIL_FIKTIF, nama_lengkap: "Bima Programmer" },
+    });
+
     const hasil = await perbaruhiProfil("Bima Programmer");
 
     expect(hasil.data).toHaveProperty("id");
@@ -42,49 +74,17 @@ describe("profil service (mode mock)", () => {
     expect(hasil.data).toHaveProperty("avatar_url");
   });
 
-  it("perbaruhiProfil menyimpan nama baru yang diberikan", async () => {
+  it("menyimpan nama baru yang diberikan", async () => {
     const namaBaru = "Sari Penulis Content";
+    mPatch.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { ...PROFIL_FIKTIF, nama_lengkap: namaBaru },
+    });
+
     const hasil = await perbaruhiProfil(namaBaru);
 
     expect(hasil.data.nama_lengkap).toBe(namaBaru);
-  });
-
-  // ----------------------------------------------------------
-  // POST /pengguna/saya/ubah-kata-sandi — ubahKataSandi
-  // ----------------------------------------------------------
-  it("ubahKataSandi berhasil dengan kata sandi lama yang benar", async () => {
-    const hasil = await ubahKataSandi("KataSandiBenar123!", "KataSandiBaru456@", "KataSandiBaru456@");
-
-    expect(hasil.berhasil).toBe(true);
-    expect(hasil.data).toBeNull();
-  });
-
-  it("ubahKataSandi melempar error saat kata sandi lama salah", async () => {
-    const { KesalahanAPI } = await import("@/lib/api-client");
-    let errorTertangkap: unknown;
-
-    try {
-      await ubahKataSandi("salah123", "KataSandiBaru456@", "KataSandiBaru456@");
-    } catch (err) {
-      errorTertangkap = err;
-    }
-
-    expect(errorTertangkap).toBeInstanceOf(KesalahanAPI);
-  });
-
-  it("ubahKataSandi error memiliki pesan yang jelas dalam Bahasa Indonesia", async () => {
-    const { KesalahanAPI } = await import("@/lib/api-client");
-    let pesanError = "";
-
-    try {
-      await ubahKataSandi("salah123", "KataSandiBaru456@", "KataSandiBaru456@");
-    } catch (err) {
-      if (err instanceof KesalahanAPI) {
-        pesanError = err.message;
-      }
-    }
-
-    expect(pesanError).toBe("Kata sandi lama tidak cocok.");
   });
 });
 
@@ -92,21 +92,51 @@ describe("profil service (mode mock)", () => {
 // PATCH /pengguna/saya — simpanOnboarding (api.md 5.2)
 // Field profesi + onboarding_selesai — F-PROF-01 PRD.md
 // ============================================================
-describe("simpanOnboarding (mode mock)", () => {
+describe("simpanOnboarding", () => {
   beforeEach(() => {
-    resetStateMockProfil();
+    mPatch.mockReset();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+  it("mengirim profesi + onboarding_selesai saat profesi dipilih", async () => {
+    mPatch.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { ...PROFIL_FIKTIF, profesi: "desainer", onboarding_selesai: true },
+    });
+
+    await simpanOnboarding("desainer");
+
+    expect(mPatch).toHaveBeenCalledWith(
+      "/pengguna/saya",
+      { onboarding_selesai: true, profesi: "desainer" },
+      true
+    );
   });
 
-  it("berhasil simpan dengan profesi yang dipilih", async () => {
-    const hasil = await simpanOnboarding("desainer");
-    expect(hasil.berhasil).toBe(true);
+  it("hanya mengirim onboarding_selesai saat lewati (profesi null)", async () => {
+    mPatch.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { ...PROFIL_FIKTIF, profesi: null, onboarding_selesai: true },
+    });
+
+    const hasil = await simpanOnboarding(null);
+
+    expect(mPatch).toHaveBeenCalledWith(
+      "/pengguna/saya",
+      { onboarding_selesai: true },
+      true
+    );
+    expect(hasil.data.onboarding_selesai).toBe(true);
   });
 
   it("mengembalikan field wajib sesuai kontrak api.md 5.2", async () => {
+    mPatch.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { ...PROFIL_FIKTIF, profesi: "programmer", onboarding_selesai: true },
+    });
+
     const hasil = await simpanOnboarding("programmer");
 
     expect(hasil.data).toHaveProperty("id");
@@ -118,50 +148,100 @@ describe("simpanOnboarding (mode mock)", () => {
   });
 
   it("menyimpan profesi yang dikirim ke respons", async () => {
+    mPatch.mockResolvedValueOnce({
+      berhasil: true,
+      pesan: "OK",
+      data: { ...PROFIL_FIKTIF, profesi: "penulis", onboarding_selesai: true },
+    });
+
     const hasil = await simpanOnboarding("penulis");
+
     expect(hasil.data.profesi).toBe("penulis");
-  });
-
-  it("onboarding_selesai selalu true setelah simpan", async () => {
-    const hasil = await simpanOnboarding("desainer");
-    expect(hasil.data.onboarding_selesai).toBe(true);
-  });
-
-  it("berhasil lewati tanpa profesi — profesi null", async () => {
-    const hasil = await simpanOnboarding(null);
-    expect(hasil.berhasil).toBe(true);
-    expect(hasil.data.onboarding_selesai).toBe(true);
-  });
-
-  it("lewati tanpa profesi — profesi tetap null di respons", async () => {
-    const hasil = await simpanOnboarding(null);
-    expect(hasil.data.profesi).toBeNull();
   });
 
   it("semua nilai profesi yang valid diterima", async () => {
     const nilaiValid = ["desainer", "penulis", "programmer", "lainnya"] as const;
 
     for (const nilai of nilaiValid) {
-      resetStateMockProfil();
-      const hasil = await simpanOnboarding(nilai);
-      expect(hasil.data.profesi).toBe(nilai);
+      mPatch.mockReset();
+      mPatch.mockResolvedValueOnce({
+        berhasil: true,
+        pesan: "OK",
+        data: { ...PROFIL_FIKTIF, profesi: nilai, onboarding_selesai: true },
+      });
+
+      await simpanOnboarding(nilai);
+      expect(mPatch).toHaveBeenCalledWith(
+        "/pengguna/saya",
+        { onboarding_selesai: true, profesi: nilai },
+        true
+      );
     }
   });
+});
 
-  it("state mock persisten — profesi tersimpan untuk panggilan berikutnya", async () => {
-    await simpanOnboarding("programmer");
-    // Panggil perbaruhiProfil setelah simpanOnboarding
-    // profesi harus tetap sesuai yang disimpan saat onboarding
-    const hasil = await perbaruhiProfil("Nama Baru");
-    expect(hasil.data.profesi).toBe("programmer");
+// ============================================================
+// POST /pengguna/saya/ubah-kata-sandi — ubahKataSandi
+// ============================================================
+describe("ubahKataSandi", () => {
+  beforeEach(() => {
+    mPost.mockReset();
   });
 
-  it("resetStateMockProfil mengembalikan profesi ke null", async () => {
-    await simpanOnboarding("desainer");
-    resetStateMockProfil();
-    // Setelah reset, profil.service mock kembali ke state awal
-    const hasil = await perbaruhiProfil("Test");
-    expect(hasil.data.profesi).toBeNull();
+  it("memanggil POST /pengguna/saya/ubah-kata-sandi dengan payload lengkap", async () => {
+    mPost.mockResolvedValueOnce({ berhasil: true, pesan: "OK", data: null });
+
+    const hasil = await ubahKataSandi(
+      "KataSandiBenar123!",
+      "KataSandiBaru456@",
+      "KataSandiBaru456@"
+    );
+
+    expect(mPost).toHaveBeenCalledWith(
+      "/pengguna/saya/ubah-kata-sandi",
+      {
+        kata_sandi_lama: "KataSandiBenar123!",
+        kata_sandi_baru: "KataSandiBaru456@",
+        konfirmasi_kata_sandi_baru: "KataSandiBaru456@",
+      },
+      true
+    );
+    expect(hasil.berhasil).toBe(true);
+    expect(hasil.data).toBeNull();
+  });
+
+  it("melempar KesalahanAPI saat backend menolak (kata sandi lama salah)", async () => {
+    const { KesalahanAPI } = await import("@/lib/api-client");
+    mPost.mockRejectedValueOnce(
+      new KesalahanAPI("Kata sandi lama tidak cocok.", "VALIDASI_GAGAL", 400)
+    );
+
+    let errorTertangkap: unknown;
+    try {
+      await ubahKataSandi("salah123", "KataSandiBaru456@", "KataSandiBaru456@");
+    } catch (err) {
+      errorTertangkap = err;
+    }
+
+    expect(errorTertangkap).toBeInstanceOf(KesalahanAPI);
+  });
+
+  it("error memiliki pesan yang jelas dalam Bahasa Indonesia", async () => {
+    const { KesalahanAPI } = await import("@/lib/api-client");
+    mPost.mockRejectedValueOnce(
+      new KesalahanAPI("Kata sandi lama tidak cocok.", "VALIDASI_GAGAL", 400)
+    );
+
+    let pesanError = "";
+    try {
+      await ubahKataSandi("salah123", "KataSandiBaru456@", "KataSandiBaru456@");
+    } catch (err) {
+      if (err instanceof KesalahanAPI) {
+        pesanError = err.message;
+      }
+    }
+
+    expect(pesanError).toBe("Kata sandi lama tidak cocok.");
   });
 });
 

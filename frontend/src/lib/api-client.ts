@@ -69,7 +69,8 @@ export function hapusAccessToken(): void {
 // ============================================================
 // Fungsi fetch utama
 // ============================================================
-const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://api.kontrakaman.id/v1";
+const baseUrl =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/v1";
 
 interface OpsiPermintaan extends Omit<RequestInit, "body"> {
   body?: Record<string, unknown> | FormData;

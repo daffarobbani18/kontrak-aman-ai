@@ -214,6 +214,45 @@ export class DokumenKontrakService {
     return this.formatDokumen(dokumenRevisi);
   }
 
+  /**
+   * Riwayat revisi dokumen — daftar dokumen turunan (F-DOC-05).
+   * Revisi tersimpan sebagai dokumen baru dengan parent_document_id.
+   */
+  async riwayatRevisi(penggunaId: string, id: string) {
+    // Verifikasi dokumen induk milik pengguna
+    const dokumenInduk = await this.prisma.contractDocument.findFirst({
+      where: { id, user_id: penggunaId, deleted_at: null },
+      select: { id: true },
+    });
+    if (!dokumenInduk) throw new NotFoundException('Dokumen tidak ditemukan');
+
+    const revisi = await this.prisma.contractDocument.findMany({
+      where: { parent_document_id: id, user_id: penggunaId, deleted_at: null },
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        file_name: true,
+        file_size: true,
+        mime_type: true,
+        status: true,
+        parent_document_id: true,
+        created_at: true,
+      },
+    });
+
+    return {
+      data: revisi.map((dok) => ({
+        id: dok.id,
+        namaFile: dok.file_name,
+        ukuranFile: dok.file_size,
+        tipeFile: dok.mime_type,
+        status: dok.status,
+        idDokumenInduk: dok.parent_document_id,
+        dibuatPada: dok.created_at,
+      })),
+    };
+  }
+
   /** Hapus dokumen (soft delete + hapus dari storage) */
   async hapus(penggunaId: string, id: string): Promise<void> {
     const dokumen = await this.prisma.contractDocument.findFirst({
@@ -261,7 +300,7 @@ export class DokumenKontrakService {
 
     if (dokumen.length === 0) return;
 
-    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3001');
+    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3000');
 
     await Promise.allSettled(
       dokumen.map(async (dok) => {
@@ -299,7 +338,7 @@ export class DokumenKontrakService {
    */
   @Cron('0 9 * * *')
   async cronPengingatAuditBerisiko(): Promise<void> {
-    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3001');
+    const frontendUrl = this.cfg.get<string>('FRONTEND_URL', 'http://localhost:3000');
 
     // Ambil audit COMPLETED dengan risk level RED yang belum punya negosiasi
     // dan belum ditandai selesai ditindaklanjuti (F-NOTIF-02)

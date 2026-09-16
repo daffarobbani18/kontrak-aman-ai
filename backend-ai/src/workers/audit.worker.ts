@@ -35,7 +35,7 @@ export class AuditWorker extends WorkerHost {
   ) {
     super();
     this.bucket = cfg.getOrThrow<string>('SUPABASE_S3_BUCKET');
-    this.backendApiUrl = cfg.get<string>('BACKEND_API_URL', 'http://localhost:3000');
+    this.backendApiUrl = cfg.get<string>('BACKEND_API_URL', 'http://localhost:4000');
     this.internalApiKey = cfg.getOrThrow<string>('INTERNAL_API_KEY');
     this.s3 = new S3Client({
       endpoint: cfg.getOrThrow<string>('SUPABASE_S3_ENDPOINT'),

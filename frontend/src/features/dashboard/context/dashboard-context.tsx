@@ -3,7 +3,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ambilProfil, ambilDaftarDokumen } from "@/features/dashboard/services/dashboard.service";
-import { mockAmbilProfil, mockAmbilDaftarDokumen } from "@/lib/mock-dashboard";
 import { KesalahanAPI, hapusAccessToken } from "@/lib/api-client";
 import type { StateDashboard } from "@/features/dashboard/types";
 
@@ -12,8 +11,6 @@ import type { StateDashboard } from "@/features/dashboard/types";
 // halaman dan komponen dalam route group (dashboard)
 // Mencegah double fetch antara navbar dan halaman dashboard
 // ============================================================
-
-const PAKAI_MOCK = process.env.NEXT_PUBLIC_MOCK_AUTH === "true";
 
 type KonteksDashboard = StateDashboard & {
   muatUlang: () => Promise<void>;
@@ -35,39 +32,19 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => ({ ...prev, sedangMemuat: true, kesalahan: null }));
 
     try {
-      if (PAKAI_MOCK) {
-        // sessionStorage tidak tersedia di SSR — guard dengan typeof window
-        const emailMock =
-          typeof window !== "undefined"
-            ? (sessionStorage.getItem("mock_email") ?? "rani@example.com")
-            : "rani@example.com";
+      // Fetch paralel — api.md 5.1 dan 6.2
+      const [responsProfil, responsDokumen] = await Promise.all([
+        ambilProfil(),
+        ambilDaftarDokumen({ limit: 10 }),
+      ]);
 
-        const responsProfil = await mockAmbilProfil(emailMock);
-        const profil = responsProfil.data;
-        const responsDokumen = await mockAmbilDaftarDokumen(profil.id);
-
-        setState({
-          profil,
-          dokumen: responsDokumen.data,
-          sedangMemuat: false,
-          kesalahan: null,
-          paginasi: responsDokumen.paginasi,
-        });
-      } else {
-        // Fetch paralel — api.md 5.1 dan 6.2
-        const [responsProfil, responsDokumen] = await Promise.all([
-          ambilProfil(),
-          ambilDaftarDokumen({ limit: 10 }),
-        ]);
-
-        setState({
-          profil: responsProfil.data,
-          dokumen: responsDokumen.data,
-          sedangMemuat: false,
-          kesalahan: null,
-          paginasi: responsDokumen.paginasi,
-        });
-      }
+      setState({
+        profil: responsProfil.data,
+        dokumen: responsDokumen.data,
+        sedangMemuat: false,
+        kesalahan: null,
+        paginasi: responsDokumen.paginasi,
+      });
     } catch (error) {
       // Jika token expired atau tidak valid, bersihkan sesi dan redirect ke login
       // Mencegah pengguna terjebak di halaman error tanpa tahu harus apa (AGENTS.md Bagian 7)
@@ -76,9 +53,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         (error.statusHttp === 401 || error.kode === "TOKEN_TIDAK_VALID")
       ) {
         hapusAccessToken();
-        if (PAKAI_MOCK && typeof window !== "undefined") {
-          sessionStorage.removeItem("mock_email");
-        }
         router.push("/masuk");
         return;
       }

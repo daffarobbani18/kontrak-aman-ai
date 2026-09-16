@@ -68,14 +68,6 @@ export function useHapusAkun() {
           tanggalHapusPermanen: respons.data.dihapus_pada,
         });
 
-        // Bersihkan session mock jika ada
-        if (
-          typeof window !== "undefined" &&
-          process.env.NEXT_PUBLIC_MOCK_AUTH === "true"
-        ) {
-          sessionStorage.removeItem("mock_email");
-        }
-
         // Delay singkat agar pengguna bisa baca pesan sukses
         setTimeout(() => {
           router.push("/masuk");
