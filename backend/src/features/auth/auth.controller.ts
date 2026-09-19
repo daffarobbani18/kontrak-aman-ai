@@ -189,7 +189,7 @@ export class AuthController {
     res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
       secure,
-      sameSite: 'lax',
+      sameSite: secure ? 'none' : 'lax', // Harus 'none' jika cross-domain di production
       path: '/v1/auth', // hanya dikirim ke endpoint auth
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 hari — selaras JWT_REFRESH_EXPIRES_IN
     });
