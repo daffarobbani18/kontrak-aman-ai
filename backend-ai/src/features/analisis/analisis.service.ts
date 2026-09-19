@@ -54,23 +54,46 @@ export class AnalisisService {
   private async kirimPrompt(prompt: string): Promise<string> {
     // Coba Gemini dulu
     if (this.cfg.get<string>('GEMINI_API_KEY')) {
-      try {
-        this.logger.debug(`Menggunakan Gemini (${this.geminiModel}) sebagai primary LLM`);
-        const model = this.gemini.getGenerativeModel({
-          model: this.geminiModel,
-          generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
-        });
-        const hasil = await model.generateContent(prompt);
-        const teks = hasil.response.text();
-        if (!teks) throw new Error('Gemini mengembalikan respons kosong');
-        return teks;
-      } catch (err) {
-        this.logger.warn(
-          `Gemini gagal, fallback ke Groq: ${String(err)}`,
-        );
+      let percobaan = 0;
+      const maksPercobaan = 5;
+      
+      while (percobaan < maksPercobaan) {
+        try {
+          this.logger.debug(`Menggunakan Gemini (${this.geminiModel}) sebagai primary LLM (Percobaan ${percobaan + 1}/${maksPercobaan})`);
+          const model = this.gemini.getGenerativeModel({
+            model: this.geminiModel,
+            generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+          });
+          const hasil = await model.generateContent(prompt);
+          const teks = hasil.response.text();
+          if (!teks) throw new Error('Gemini mengembalikan respons kosong');
+          return teks;
+        } catch (err) {
+          percobaan++;
+          const pesanError = String(err);
+          this.logger.warn(`Gemini gagal (Percobaan ${percobaan}): ${pesanError}`);
+          
+          if (percobaan >= maksPercobaan) {
+            if (!this.cfg.get<string>('GROQ_API_KEY')) {
+              throw err; // Lempar error asli Gemini jika tidak ada fallback
+            }
+            this.logger.warn('Gemini gagal total setelah retries, fallback ke Groq...');
+            break;
+          }
+          
+          // Exponential backoff: 3s, 6s, 12s, 24s
+          const delay = 3000 * Math.pow(2, percobaan - 1);
+          this.logger.debug(`Menunggu ${delay}ms sebelum mencoba Gemini lagi...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
     } else {
       this.logger.debug('GEMINI_API_KEY tidak di-set, langsung ke Groq');
+    }
+
+    // Jika tidak ada Groq, langsung error
+    if (!this.cfg.get<string>('GROQ_API_KEY')) {
+      throw new Error('Semua LLM gagal dan GROQ_API_KEY tidak dikonfigurasi.');
     }
 
     // Fallback ke Groq
