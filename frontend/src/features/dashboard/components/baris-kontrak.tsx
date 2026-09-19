@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { FileText, Clock, AlertCircle, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { motion } from "motion/react";
 import { useHapusDokumen } from "@/features/dokumen-kontrak/hooks/use-hapus-dokumen";
+import { useHasilAudit } from "@/features/audit-klausul/hooks/use-hasil-audit";
 import { DialogHapusDokumen } from "@/features/dokumen-kontrak/components/dialog-hapus-dokumen";
 import type { ItemDokumenKontrak, SkorRisiko, StatusDokumen } from "@/features/dashboard/types";
 
@@ -67,7 +69,53 @@ function formatTanggal(tanggalIso: string): string {
   });
 }
 
+// Komponen internal untuk menampilkan progres real-time
+function ProgressRealtime({ auditId, statusAwal }: { auditId: string | null; statusAwal: string }) {
+  // Jika punya auditId, kita bisa poll progres nyatanya
+  const { state } = useHasilAudit(auditId);
+  
+  // Kalau belum ada auditId (baru saja diunggah, antrian awal), pakai indeterminate
+  if (!auditId) {
+    if (statusAwal !== "menunggu" && statusAwal !== "memproses") return null;
+    return (
+      <div className="absolute bottom-0 left-0 h-[3px] w-full overflow-hidden rounded-b-[var(--jernih-radius-md)] bg-[var(--jernih-primary)]/10">
+        <motion.div
+          className="h-full w-1/3 bg-[var(--jernih-primary)]"
+          animate={{ x: ["-100%", "300%"] }}
+          transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+        />
+      </div>
+    );
+  }
+
+  // Jika sudah gagal, jangan tampilkan bar progres (tapi error badge tetap ada di card)
+  if (state.status === "gagal") return null;
+
+  // Persentase riil dari backend AI
+  const progres = state.status === "selesai" ? 100 : state.progres;
+  const teksProgres = state.status === "memuat" ? "Menghubungkan..." : `Menganalisis ${progres}%`;
+
+  return (
+    <>
+      <div className="absolute top-4 right-14 flex items-center justify-center">
+         <span className="text-label-sm font-medium text-[var(--jernih-primary)] opacity-80">{teksProgres}</span>
+      </div>
+      <div className="absolute bottom-0 left-0 h-[3px] w-full overflow-hidden rounded-b-[var(--jernih-radius-md)] bg-[var(--jernih-primary)]/10">
+        <motion.div
+          className="h-full bg-[var(--jernih-primary)]"
+          initial={{ width: 0 }}
+          animate={{ width: `${progres}%` }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+        />
+      </div>
+    </>
+  );
+}
+
 export default function BarisKontrak({ dokumen, onDihapus }: PropBarisKontrak) {
+  // Cek apakah dokumen ini aslinya boleh diklik? 
+  // Atau jika secara live state.status === "selesai" kita bisa override agar bisa diklik?
+  // Untuk simpelnya kita pakai state dari list parent dulu.
   const bolehKlik = dokumen.status === "selesai" && dokumen.audit_id;
 
   // State hover untuk tombol hapus di desktop
@@ -91,7 +139,7 @@ export default function BarisKontrak({ dokumen, onDihapus }: PropBarisKontrak) {
     >
       {/* Ikon file */}
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--jernih-radius-md)] bg-[var(--jernih-neutral)]/8">
-        {dokumen.status === "memproses" ? (
+        {dokumen.status === "memproses" || dokumen.status === "menunggu" ? (
           <Clock
             className="h-4 w-4 text-[var(--jernih-primary)]"
             strokeWidth={1.5}
@@ -123,17 +171,14 @@ export default function BarisKontrak({ dokumen, onDihapus }: PropBarisKontrak) {
       </div>
 
       {/* Badge status/skor + tombol hapus */}
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="relative flex shrink-0 items-center gap-2">
         {dokumen.status === "selesai" && dokumen.skor_risiko ? (
           <BadgeSkorRisiko skor={dokumen.skor_risiko} />
         ) : (
           <BadgeStatus status={dokumen.status} />
         )}
 
-        {/* Tombol hapus:
-            - Desktop: tampil saat hover (opacity transisi)
-            - Mobile: selalu tampil agar mudah disentuh
-            Tersedia di semua status sesuai PRD F-DOC-04 (hak privasi data) */}
+        {/* Tombol hapus */}
         <button
           type="button"
           onClick={(e) => {
@@ -160,6 +205,11 @@ export default function BarisKontrak({ dokumen, onDihapus }: PropBarisKontrak) {
           <Trash2 className="h-4 w-4" strokeWidth={1.5} aria-hidden="true" />
         </button>
       </div>
+
+      {/* Progress bar animasi riil jika sedang menunggu/memproses */}
+      {(dokumen.status === "menunggu" || dokumen.status === "memproses") && (
+        <ProgressRealtime auditId={dokumen.audit_id} statusAwal={dokumen.status} />
+      )}
     </div>
   );
 
