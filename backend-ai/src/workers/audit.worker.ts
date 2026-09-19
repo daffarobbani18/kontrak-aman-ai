@@ -8,7 +8,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { OcrService } from '../features/ocr/ocr.service';
 import { AnalisisService } from '../features/analisis/analisis.service';
-import { ANTRIAN_AUDIT_KONTRAK } from '../app.module';
+import { ANTRIAN_AUDIT_KONTRAK } from '../constants/queue.constants';
 
 export interface PayloadAudit {
   auditId: string;

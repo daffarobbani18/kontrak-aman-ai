@@ -159,39 +159,43 @@ export class PenggunaService {
     ]);
 
     const langgananAktif = pengguna.subscriptions[0] ?? null;
+    const tierLangganan = langgananAktif?.plan.tier;
+    const tier = tierLangganan === 'PRO' ? 'pro' : tierLangganan === 'BUSINESS' ? 'bisnis' : 'gratis';
 
     return {
       id: pengguna.id,
       email: pengguna.email,
-      nama: pengguna.name,
-      avatarUrl: pengguna.avatar_url,
+      nama_lengkap: pengguna.name, // disesuaikan dengan api.md dan DataProfilPengguna
+      avatar_url: pengguna.avatar_url,
       peran: pengguna.role,
       profesi: pengguna.profesi,
-      emailTerverifikasi: pengguna.email_verified,
-      consentPrivasiPada: pengguna.consent_privacy_at,
-      preferensiNotifikasi: {
-        emailAudit: pengguna.notif_email_audit,
-        emailPengingat: pengguna.notif_email_pengingat,
+      email_terverifikasi: pengguna.email_verified,
+      tier, // ditambahkan untuk memenuhi ekspektasi DataProfilPengguna
+      onboarding_selesai: !!pengguna.profesi, // asumsi F-PROF-01
+      consent_privasi_pada: pengguna.consent_privacy_at,
+      preferensi_notifikasi: {
+        email_audit: pengguna.notif_email_audit,
+        email_pengingat: pengguna.notif_email_pengingat,
       },
-      dibuatPada: pengguna.created_at,
+      dibuat_pada: pengguna.created_at,
       langganan: langgananAktif
         ? {
             paket: langgananAktif.plan.name,
             tier: langgananAktif.plan.tier,
             status: langgananAktif.status,
-            berakhirPada: langgananAktif.current_period_end,
+            berakhir_pada: langgananAktif.current_period_end,
           }
         : null,
       kuota: {
         audit: {
           terpakai: kuotaAudit.terpakai,
           batas: kuotaAudit.batas,
-          sisaKuota: kuotaAudit.sisaKuota,
+          sisa_kuota: kuotaAudit.sisaKuota,
         },
         negosiasi: {
           terpakai: kuotaNegosiasi.terpakai,
           batas: kuotaNegosiasi.batas,
-          sisaKuota: kuotaNegosiasi.sisaKuota,
+          sisa_kuota: kuotaNegosiasi.sisaKuota,
         },
       },
     };

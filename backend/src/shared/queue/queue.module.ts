@@ -2,8 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
 /** Nama antrian BullMQ */
-export const ANTRIAN_AUDIT_KONTRAK = 'antrian:audit-kontrak';
-export const ANTRIAN_DRAF_NEGOSIASI = 'antrian:draf-negosiasi';
+export const ANTRIAN_AUDIT_KONTRAK = 'antrian-audit-kontrak';
+export const ANTRIAN_DRAF_NEGOSIASI = 'antrian-draf-negosiasi';
 
 /**
  * QueueModule — registrasi dua antrian BullMQ.

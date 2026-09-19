@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { OcrService } from '../features/ocr/ocr.service';
 import { AnalisisService } from '../features/analisis/analisis.service';
-import { ANTRIAN_DRAF_NEGOSIASI } from '../app.module';
+import { ANTRIAN_DRAF_NEGOSIASI } from '../constants/queue.constants';
 
 export interface PayloadNegosiasi {
   negosiasiId: string;

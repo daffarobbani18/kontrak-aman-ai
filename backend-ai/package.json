@@ -15,7 +15,7 @@
     "@types/pdf-parse": "^1.1.4",
     "prisma": "^7.9.1",
     "ts-node": "^10.9.2",
-    "typescript": "^7.0.2"
+    "typescript": "^6.0.3"
   },
   "allowScripts": {
     "prisma@7.9.1": true,

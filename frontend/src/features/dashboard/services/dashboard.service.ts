@@ -31,14 +31,26 @@ export async function ambilDaftarDokumen(opsi?: {
   cursor?: string;
 }): Promise<ResponsAPI<ItemDokumenKontrak[]> & { paginasi: DataPaginasi }> {
   const params = new URLSearchParams();
-  if (opsi?.status) params.set("status", opsi.status);
-  if (opsi?.limit) params.set("limit", String(opsi.limit));
+  // Backend DTO (DtoDaftarDokumen) hanya menerima: cursor, batas, risikoLevel
+  if (opsi?.limit) params.set("batas", String(opsi.limit));
   if (opsi?.cursor) params.set("cursor", opsi.cursor);
 
   const queryString = params.toString();
   const path = queryString ? `/dokumen-kontrak?${queryString}` : "/dokumen-kontrak";
 
-  return apiClient.get<ItemDokumenKontrak[]>(path, true) as Promise<
-    ResponsAPI<ItemDokumenKontrak[]> & { paginasi: DataPaginasi }
-  >;
+  const respons = await apiClient.get<{
+    data: ItemDokumenKontrak[];
+    cursorBerikut: string | null;
+    adaHalamanBerikut: boolean;
+  }>(path, true);
+
+  return {
+    berhasil: respons.berhasil,
+    pesan: respons.pesan,
+    data: respons.data.data,
+    paginasi: {
+      cursorBerikut: respons.data.cursorBerikut,
+      adaHalamanBerikut: respons.data.adaHalamanBerikut,
+    },
+  };
 }

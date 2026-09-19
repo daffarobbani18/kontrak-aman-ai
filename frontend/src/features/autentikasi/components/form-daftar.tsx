@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Controller } from "react-hook-form";
 import Link from "next/link";
 import { Eye, EyeOff, Globe, CheckCircle, ArrowLeft } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -327,17 +328,19 @@ export default function FormDaftar() {
             {/* Checkbox kebijakan privasi — F-PRIV-01 PRD wajib */}
             <div className="flex flex-col gap-1.5">
               <div className="flex items-start gap-2.5">
-                <Checkbox
-                  id="setuju_kebijakan_privasi"
-                  checked={nilaiSetuju}
-                  onCheckedChange={(checked) =>
-                    setValue("setuju_kebijakan_privasi", checked === true, {
-                      shouldValidate: true,
-                    })
-                  }
-                  aria-invalid={!!errors.setuju_kebijakan_privasi}
-                  aria-describedby={errors.setuju_kebijakan_privasi ? "privasi-error" : undefined}
-                  className="mt-0.5 shrink-0"
+                <Controller
+                  name="setuju_kebijakan_privasi"
+                  control={form.control}
+                  render={({ field }) => (
+                    <Checkbox
+                      id="setuju_kebijakan_privasi"
+                      checked={field.value === true}
+                      onCheckedChange={(checked) => field.onChange(checked === true)}
+                      aria-invalid={!!errors.setuju_kebijakan_privasi}
+                      aria-describedby={errors.setuju_kebijakan_privasi ? "privasi-error" : undefined}
+                      className="mt-0.5 shrink-0"
+                    />
+                  )}
                 />
                 <label
                   htmlFor="setuju_kebijakan_privasi"

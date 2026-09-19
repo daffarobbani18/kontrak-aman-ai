@@ -39,7 +39,11 @@ export class EmailService {
       html: opsi.html,
       text: opsi.teks,
     };
-    await this.transporter.sendMail(pesan);
+    try {
+      await this.transporter.sendMail(pesan);
+    } catch (error) {
+      console.warn('⚠️ Gagal mengirim email (mungkin SMTP belum dikonfigurasi di .env):', (error as Error).message);
+    }
   }
 
   /** Template: verifikasi email */

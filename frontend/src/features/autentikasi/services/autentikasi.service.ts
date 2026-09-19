@@ -26,10 +26,9 @@ export async function daftar(
   payload: Omit<TipeDaftar, "setuju_kebijakan_privasi">
 ): Promise<ResponsAPI<ResponsDaftar>> {
   return apiClient.post<ResponsDaftar>("/auth/daftar", {
-    nama_lengkap: payload.nama_lengkap,
+    nama: payload.nama_lengkap,
     email: payload.email,
-    kata_sandi: payload.kata_sandi,
-    konfirmasi_kata_sandi: payload.konfirmasi_kata_sandi,
+    kataSandi: payload.kata_sandi,
   });
 }
 
@@ -41,7 +40,7 @@ export async function daftar(
 export async function masuk(payload: TipeMasuk): Promise<ResponsAPI<ResponsMasuk>> {
   const respons = await apiClient.post<ResponsMasuk>("/auth/masuk", {
     email: payload.email,
-    kata_sandi: payload.kata_sandi,
+    kataSandi: payload.kata_sandi,
   });
 
   // Simpan access token di memory — refresh token diset backend via httpOnly cookie
@@ -68,7 +67,7 @@ export function masukDenganGoogle(): void {
 export async function keluar(refreshToken: string): Promise<ResponsAPI<null>> {
   const respons = await apiClient.post<null>(
     "/auth/keluar",
-    { refresh_token: refreshToken },
+    { refreshToken: refreshToken },
     true // butuh auth
   );
 
@@ -97,8 +96,7 @@ export async function lupaKataSandi(payload: TipeLupaKataSandi): Promise<Respons
 export async function resetKataSandi(payload: TipeResetKataSandi): Promise<ResponsAPI<null>> {
   return apiClient.post<null>("/auth/reset-kata-sandi", {
     token: payload.token,
-    kata_sandi_baru: payload.kata_sandi_baru,
-    konfirmasi_kata_sandi_baru: payload.konfirmasi_kata_sandi_baru,
+    kataSandiBaru: payload.kata_sandi_baru,
   });
 }
 
@@ -123,7 +121,7 @@ export async function perbaruiToken(
   refreshToken: string
 ): Promise<ResponsAPI<ResponsPembaruanToken>> {
   const respons = await apiClient.post<ResponsPembaruanToken>("/auth/perbarui-token", {
-    refresh_token: refreshToken,
+    refreshToken: refreshToken,
   });
 
   // Perbarui access token di memory

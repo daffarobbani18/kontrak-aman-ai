@@ -6,10 +6,7 @@ import { OcrModule } from './features/ocr/ocr.module';
 import { AnalisisModule } from './features/analisis/analisis.module';
 import { AuditWorker } from './workers/audit.worker';
 import { NegosiasiWorker } from './workers/negosiasi.worker';
-
-/** Nama antrian — harus sama dengan backend-api */
-export const ANTRIAN_AUDIT_KONTRAK = 'antrian:audit-kontrak';
-export const ANTRIAN_DRAF_NEGOSIASI = 'antrian:draf-negosiasi';
+import { ANTRIAN_AUDIT_KONTRAK, ANTRIAN_DRAF_NEGOSIASI } from './constants/queue.constants';
 
 @Module({
   imports: [
