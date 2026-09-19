@@ -78,39 +78,20 @@ export class DokumenKontrakService {
   async daftar(penggunaId: string, dto: DtoDaftarDokumen) {
     const batas = Math.min(dto.batas ?? 20, 50);
 
+    const filter: any = { user_id: penggunaId, deleted_at: null };
+    
     // Jika filter risikoLevel aktif, join ke audit untuk filter
     if (dto.risikoLevel) {
-      const dokumen = await this.prisma.contractDocument.findMany({
-        where: {
-          user_id: penggunaId,
-          deleted_at: null,
-          audits: {
-            some: {
-              status: 'COMPLETED',
-              overall_risk_level: dto.risikoLevel,
-            },
-          },
+      filter.audits = {
+        some: {
+          status: 'COMPLETED',
+          overall_risk_level: dto.risikoLevel,
         },
-        orderBy: { created_at: 'desc' },
-        take: batas + 1,
-        ...(dto.cursor ? { cursor: { id: dto.cursor }, skip: 1 } : {}),
-        select: {
-          id: true,
-          file_name: true,
-          file_size: true,
-          mime_type: true,
-          status: true,
-          created_at: true,
-        },
-      });
-
-      const adaHalamanBerikut = dokumen.length > batas;
-      const data = adaHalamanBerikut ? dokumen.slice(0, -1) : dokumen;
-      return { data, cursorBerikut: adaHalamanBerikut ? data[data.length - 1]?.id : null, adaHalamanBerikut };
+      };
     }
 
     const dokumen = await this.prisma.contractDocument.findMany({
-      where: { user_id: penggunaId, deleted_at: null },
+      where: filter,
       orderBy: { created_at: 'desc' },
       take: batas + 1,
       ...(dto.cursor ? { cursor: { id: dto.cursor }, skip: 1 } : {}),
@@ -121,11 +102,43 @@ export class DokumenKontrakService {
         mime_type: true,
         status: true,
         created_at: true,
+        audits: {
+          orderBy: { created_at: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            overall_risk_level: true,
+            risk_score: true,
+          }
+        }
       },
     });
 
     const adaHalamanBerikut = dokumen.length > batas;
-    const data = adaHalamanBerikut ? dokumen.slice(0, -1) : dokumen;
+    const dataRow = adaHalamanBerikut ? dokumen.slice(0, -1) : dokumen;
+    
+    const data = dataRow.map((dok) => {
+      const auditLatest = dok.audits[0];
+      let skorMapped = null;
+      if (auditLatest?.overall_risk_level) {
+        if (auditLatest.overall_risk_level === 'RED') skorMapped = 'merah';
+        else if (auditLatest.overall_risk_level === 'YELLOW') skorMapped = 'kuning';
+        else if (auditLatest.overall_risk_level === 'GREEN') skorMapped = 'hijau';
+      }
+      
+      return {
+        id: dok.id,
+        file_name: dok.file_name,
+        file_size: dok.file_size,
+        mime_type: dok.mime_type,
+        status: auditLatest?.status ?? dok.status,
+        created_at: dok.created_at,
+        audit_id: auditLatest?.id ?? null,
+        skor_risiko: skorMapped,
+      };
+    });
+
     const cursorBerikut = adaHalamanBerikut ? data[data.length - 1]?.id : null;
 
     return { data, cursorBerikut, adaHalamanBerikut };
