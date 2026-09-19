@@ -42,6 +42,7 @@ export async function ambilDaftarDokumen(opsi?: {
     data: any[];
     cursorBerikut: string | null;
     adaHalamanBerikut: boolean;
+    total?: number;
   }>(path, true);
 
   const dataMentah = respons.data.data || [];
