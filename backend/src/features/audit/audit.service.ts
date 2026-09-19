@@ -160,6 +160,7 @@ export class AuditService {
           : null,
       ringkasan: audit.summary,
       hasilJson: audit.result_json,
+      dokumenId: audit.document_id,
       namaFile: audit.document.file_name,
       dibuatPada: audit.created_at,
       selesaiPada: audit.completed_at,

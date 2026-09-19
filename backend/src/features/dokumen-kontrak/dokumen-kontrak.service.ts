@@ -240,17 +240,15 @@ export class DokumenKontrakService {
       },
     });
 
-    return {
-      data: revisi.map((dok) => ({
-        id: dok.id,
-        namaFile: dok.file_name,
-        ukuranFile: dok.file_size,
-        tipeFile: dok.mime_type,
-        status: dok.status,
-        idDokumenInduk: dok.parent_document_id,
-        dibuatPada: dok.created_at,
-      })),
-    };
+    return revisi.map((dok) => ({
+      id: dok.id,
+      namaFile: dok.file_name,
+      ukuranFile: dok.file_size,
+      tipeFile: dok.mime_type,
+      status: dok.status,
+      idDokumenInduk: dok.parent_document_id,
+      dibuatPada: dok.created_at,
+    }));
   }
 
   /** Hapus dokumen (soft delete + hapus dari storage) */
@@ -347,7 +345,7 @@ export class DokumenKontrakService {
         status: 'COMPLETED',
         overall_risk_level: 'RED',
         followed_up_at: null,
-        negosiasi: { none: {} },
+        negotiations: { none: {} },
       },
       select: {
         id: true,

@@ -49,7 +49,7 @@ export function ItemKlausul({
     defaultTerbuka || klausul.tingkat_risiko === "merah"
   );
   const kurangiGerak = useReducedMotion();
-  const config = KONFIGURASI_RISIKO[klausul.tingkat_risiko];
+  const config = KONFIGURASI_RISIKO[klausul.tingkat_risiko] || KONFIGURASI_RISIKO["hijau"];
 
   const varianKonten = {
     tertutup: { height: 0, opacity: 0 },
