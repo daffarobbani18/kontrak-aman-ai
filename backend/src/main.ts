@@ -26,13 +26,8 @@ async function bootstrap(): Promise<void> {
   app.use(cookieParser());
 
   // CORS — dukung beberapa origin dipisah koma via CORS_ORIGINS
-  const daftarOrigin = configService
-    .get<string>('CORS_ORIGINS', 'http://localhost:3000')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
   app.enableCors({
-    origin: daftarOrigin,
+    origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Api-Key'],
