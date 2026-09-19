@@ -68,8 +68,9 @@ export async function ambilDaftarDokumen(opsi?: {
     pesan: respons.pesan,
     data: dataDiproses,
     paginasi: {
-      cursorBerikut: respons.data.cursorBerikut,
-      adaHalamanBerikut: respons.data.adaHalamanBerikut,
+      cursor_berikutnya: respons.data.cursorBerikut || null,
+      ada_lagi: respons.data.adaHalamanBerikut || false,
+      total: respons.data.total || dataDiproses.length,
     },
   };
 }
