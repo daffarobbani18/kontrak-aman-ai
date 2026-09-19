@@ -17,12 +17,14 @@
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   },
-  "allowScripts": {
-    "prisma@7.9.1": true,
-    "@prisma/engines@7.9.1": true,
-    "canvas@3.1.1": true,
-    "tesseract.js@6.0.1": true,
-    "msgpackr-extract@3.0.4": true
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "prisma",
+      "@prisma/engines",
+      "canvas",
+      "tesseract.js",
+      "msgpackr-extract"
+    ]
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1116.0",

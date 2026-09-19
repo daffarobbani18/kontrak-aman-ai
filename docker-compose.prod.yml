@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-kontrakaman}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal_net
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal_net
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: always
+    ports:
+      - "4000:4000"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-kontrakaman}?schema=public
+      - REDIS_HOST=redis
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - internal_net
+
+  backend-ai:
+    build:
+      context: .
+      dockerfile: backend-ai/Dockerfile
+    restart: always
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+    depends_on:
+      - redis
+      - backend
+    networks:
+      - internal_net
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  internal_net:

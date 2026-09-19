@@ -12,7 +12,8 @@
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage"
+    "test:cov": "jest --coverage",
+    "db:generate": "prisma generate"
   },
   "keywords": [],
   "type": "commonjs",
@@ -32,12 +33,14 @@
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3"
   },
-  "allowScripts": {
-    "prisma@7.9.1": true,
-    "@prisma/engines@7.9.1": true,
-    "bcrypt@5.1.1": true,
-    "msgpackr-extract@3.0.4": true,
-    "@scarf/scarf@1.4.0": true
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "prisma",
+      "@prisma/engines",
+      "bcrypt",
+      "msgpackr-extract",
+      "@scarf/scarf"
+    ]
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1116.0",
