@@ -39,15 +39,34 @@ export async function ambilDaftarDokumen(opsi?: {
   const path = queryString ? `/dokumen-kontrak?${queryString}` : "/dokumen-kontrak";
 
   const respons = await apiClient.get<{
-    data: ItemDokumenKontrak[];
+    data: any[];
     cursorBerikut: string | null;
     adaHalamanBerikut: boolean;
   }>(path, true);
 
+  const dataMentah = respons.data.data || [];
+  const dataDiproses: ItemDokumenKontrak[] = dataMentah.map((item: any) => {
+    let statusMapped: ItemDokumenKontrak["status"] = "menunggu";
+    const s = String(item.status).toUpperCase();
+    if (s === "PROCESSING" || s === "MEMPROSES") statusMapped = "memproses";
+    else if (s === "COMPLETED" || s === "SELESAI") statusMapped = "selesai";
+    else if (s === "FAILED" || s === "GAGAL") statusMapped = "gagal";
+
+    return {
+      id: item.id,
+      nama: item.file_name || item.nama || "Dokumen Tanpa Nama",
+      kategori: item.kategori || "lainnya",
+      status: statusMapped,
+      skor_risiko: item.skor_risiko || null,
+      diunggah_pada: item.created_at || item.diunggah_pada || new Date().toISOString(),
+      audit_id: item.audit_id || null,
+    };
+  });
+
   return {
     berhasil: respons.berhasil,
     pesan: respons.pesan,
-    data: respons.data.data,
+    data: dataDiproses,
     paginasi: {
       cursorBerikut: respons.data.cursorBerikut,
       adaHalamanBerikut: respons.data.adaHalamanBerikut,

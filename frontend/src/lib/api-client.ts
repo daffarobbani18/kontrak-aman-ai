@@ -75,13 +75,45 @@ const baseUrl =
 interface OpsiPermintaan extends Omit<RequestInit, "body"> {
   body?: Record<string, unknown> | FormData;
   butuhAuth?: boolean;
+  _isRefreshRequest?: boolean;
+}
+
+let promiseRefresh: Promise<string | null> | null = null;
+
+async function dapatkanTokenBaru(): Promise<string | null> {
+  if (promiseRefresh) return promiseRefresh;
+
+  promiseRefresh = (async () => {
+    try {
+      const res = await fetch(`${baseUrl}/auth/perbarui-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.berhasil && data.data.access_token) {
+          simpanAccessToken(data.data.access_token);
+          return data.data.access_token;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      promiseRefresh = null;
+    }
+  })();
+
+  return promiseRefresh;
 }
 
 export async function permintaanAPI<T = null>(
   path: string,
   opsi: OpsiPermintaan = {}
 ): Promise<ResponsAPI<T>> {
-  const { body, butuhAuth = false, headers: headersTambahan, ...restOpsi } = opsi;
+  const { body, butuhAuth = false, _isRefreshRequest = false, headers: headersTambahan, ...restOpsi } = opsi;
 
   // Susun headers
   const headers: Record<string, string> = {};
@@ -93,7 +125,13 @@ export async function permintaanAPI<T = null>(
 
   // Tambahkan Authorization jika butuh auth
   if (butuhAuth) {
-    const token = ambilAccessToken();
+    let token = ambilAccessToken();
+    
+    // Jika token kosong (karena refresh halaman), coba ambil token baru pakai cookie
+    if (!token && !_isRefreshRequest) {
+      token = await dapatkanTokenBaru();
+    }
+    
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
     }
@@ -113,6 +151,20 @@ export async function permintaanAPI<T = null>(
       credentials: "include",
       body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
     });
+    
+    // Coba refresh token jika response 401 (token expired)
+    if (respons.status === 401 && !_isRefreshRequest) {
+      const tokenBaru = await dapatkanTokenBaru();
+      if (tokenBaru) {
+        headers["Authorization"] = `Bearer ${tokenBaru}`;
+        respons = await fetch(`${baseUrl}${path}`, {
+          ...restOpsi,
+          headers,
+          credentials: "include",
+          body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
+        });
+      }
+    }
   } catch {
     // Error jaringan — bukan error dari server
     throw new KesalahanAPI(

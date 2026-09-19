@@ -4,7 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class DtoBuatNegosiasi {
   @ApiProperty({ description: 'ID audit yang sudah selesai' })
-  @IsUUID()
+  @IsString()
   auditId!: string;
 
   @ApiPropertyOptional({ description: 'Instruksi tambahan untuk negosiasi' })
@@ -35,7 +35,7 @@ export class DtoEditDrafNegosiasi {
 }
 
 export class DtoHasilNegosiasiInternal {
-  @IsUUID()
+  @IsString()
   negosiasiId!: string;
 
   @IsString()

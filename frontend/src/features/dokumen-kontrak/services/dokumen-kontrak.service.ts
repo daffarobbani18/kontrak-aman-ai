@@ -47,7 +47,7 @@ export async function mulaiAudit(
 ): Promise<ResponsMulaiAudit> {
   const respons = await apiClient.post<ResponsMulaiAudit>(
     "/audit",
-    { dokumen_kontrak_id: dokumenKontrakId },
+    { dokumenId: dokumenKontrakId },
     true // butuh auth
   );
 

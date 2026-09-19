@@ -4,7 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class DtoBuatAudit {
   @ApiProperty({ description: 'ID dokumen kontrak yang sudah diupload' })
-  @IsUUID()
+  @IsString()
   dokumenId!: string;
 }
 
@@ -23,7 +23,7 @@ export class DtoDaftarAudit {
 }
 
 export class DtoHasilAuditInternal {
-  @IsUUID()
+  @IsString()
   auditId!: string;
 
   @IsString()
