@@ -144,9 +144,32 @@ export class AuditService {
     if (audit.user_id !== penggunaId)
       throw new ForbiddenException('Akses ditolak');
 
+    // Ambil progres dari BullMQ jika masih diproses
+    let progresPersen = 0;
+    if (audit.status === 'PENDING' || audit.status === 'PROCESSING') {
+      try {
+        let job = await this.antrianAudit.getJob(`audit-${audit.id}`);
+        
+        if (!job || (await job.getState()) === 'failed') {
+          const activeWaitingJobs = await this.antrianAudit.getJobs(['active', 'waiting']);
+          const found = activeWaitingJobs.find(j => j.data?.auditId === audit.id);
+          if (found) job = found;
+        }
+
+        if (job && typeof job.progress === 'number') {
+          progresPersen = job.progress;
+        }
+      } catch (err) {
+        this.logger.warn(`Gagal mengambil progres BullMQ untuk audit ${audit.id}: ${String(err)}`);
+      }
+    } else if (audit.status === 'COMPLETED') {
+      progresPersen = 100;
+    }
+
     return {
       id: audit.id,
       status: audit.status,
+      progresPersen,
       skorRisiko: audit.risk_score,
       tingkatRisikoKeseluruhan: audit.overall_risk_level,
       rekomendasiProfesional: audit.overall_risk_level === 'RED',

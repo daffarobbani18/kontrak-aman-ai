@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 
 export interface HasilAudit {
@@ -28,21 +28,25 @@ export interface HasilNegosiasi {
 @Injectable()
 export class AnalisisService {
   private readonly logger = new Logger(AnalisisService.name);
-  // Primary: Gemini via Google AI SDK
-  private readonly gemini: GoogleGenerativeAI;
+  // Primary: Gemini via new Google AI SDK
+  private readonly gemini: GoogleGenAI;
   private readonly geminiModel: string;
   // Fallback: Groq via OpenAI-compatible SDK
   private readonly groq: OpenAI;
   private readonly groqModel: string;
 
   constructor(private readonly cfg: ConfigService) {
-    this.gemini = new GoogleGenerativeAI(
-      cfg.get<string>('GEMINI_API_KEY', ''),
-    );
-    this.geminiModel = cfg.get<string>('GEMINI_MODEL', 'gemini-2.5-flash');
+    this.gemini = new GoogleGenAI({
+      apiKey: cfg.get<string>('GEMINI_API_KEY', ''),
+    });
+    this.geminiModel = cfg.get<string>('GEMINI_MODEL', 'gemini-3.6-flash');
     this.groq = new OpenAI({
       apiKey: cfg.get<string>('GROQ_API_KEY', ''),
       baseURL: cfg.get<string>('GROQ_BASE_URL', 'https://api.groq.com/openai/v1'),
+      defaultHeaders: {
+        'HTTP-Referer': 'https://kontrakaman.id',
+        'X-Title': 'KontrakAman AI',
+      },
     });
     this.groqModel = cfg.get<string>('GROQ_MODEL', 'llama-3.3-70b-versatile');
   }
@@ -60,12 +64,15 @@ export class AnalisisService {
       while (percobaan < maksPercobaan) {
         try {
           this.logger.debug(`Menggunakan Gemini (${this.geminiModel}) sebagai primary LLM (Percobaan ${percobaan + 1}/${maksPercobaan})`);
-          const model = this.gemini.getGenerativeModel({
+          const hasil = await this.gemini.models.generateContent({
             model: this.geminiModel,
-            generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+            contents: prompt,
+            config: {
+              temperature: 0.1,
+              responseMimeType: 'application/json'
+            }
           });
-          const hasil = await model.generateContent(prompt);
-          const teks = hasil.response.text();
+          const teks = hasil.text;
           if (!teks) throw new Error('Gemini mengembalikan respons kosong');
           return teks;
         } catch (err) {
